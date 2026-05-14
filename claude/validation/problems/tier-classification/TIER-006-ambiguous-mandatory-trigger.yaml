@@ -1,0 +1,6 @@
+INPUT: "Update the database schema to add a new user preference field"
+EXPECTED:
+  tier: Moderate
+  stakeholders: [Product, Tech, Data, Operations]
+  delegation: task-tool
+RATIONALE: "Task tool engagement - production stability concern triggers escalation despite appearing simple"

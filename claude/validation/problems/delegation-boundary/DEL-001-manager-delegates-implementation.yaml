@@ -1,0 +1,6 @@
+INPUT: "Add a new REST endpoint for user profile updates"
+EXPECTED:
+  tier: Moderate
+  stakeholders: [Product, Tech, Quality]
+  delegation: task-tool
+RATIONALE: "Manager delegates to senior-software-engineer via Task tool, does NOT implement directly"

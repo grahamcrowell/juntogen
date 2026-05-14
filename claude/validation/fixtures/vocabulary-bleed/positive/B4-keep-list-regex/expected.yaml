@@ -1,0 +1,5 @@
+exit_code: 0
+must_not_contain_stderr:
+  - "banned-term-bleed"
+  - "hash-drift"
+  - "term-mismatch"

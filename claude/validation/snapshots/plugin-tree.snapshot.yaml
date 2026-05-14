@@ -1,0 +1,156 @@
+# plugin-tree.snapshot.yaml — frozen manifest
+# Generated from oj-claude tree at: 2026-05-11T19:35:44Z
+# Source: git ls-files of oj-claude/ at the m.1 hand-cut baseline.
+# See juntogen/claude/validation/scripts/structural-diff.sh for usage.
+#
+# Iter-4a refresh: catches up with 11 additional regen-produced files
+# that step-11 (org-scaffold emission) writes into the plugin tree:
+#   - org-scaffold/**                    (11 files; bootstraps consumer
+#                                         project from a fresh install)
+# NOTE: platform-declaration.yaml (step-00) and platform-snapshot.yaml
+# (step-11) are ephemeral generation-workspace artifacts — gitignored
+# by adopter convention and not adopter-facing — so they are excluded
+# from this snapshot's files: list even though the pipeline writes them
+# into the workspace.
+# The 5 hand-cut preserved files (.claude/CLAUDE.md, .github/workflows/
+# plugin-validate.yml, .gitignore, LICENSE, VERSION) STAY in the
+# snapshot — they live in oj-claude across regens as project
+# infrastructure and the regen pipeline does not overwrite them.
+---
+snapshot_version: "1"
+captured_at: "2026-05-11T19:35:44Z"
+baseline_tag: "v1.0"
+output_classes_ref: "juntospec/platform-contract.yaml#output_classes"
+
+# Layer 1: file-set — sorted list of every tracked path in oj-claude/
+files:
+  - ".claude-plugin/plugin.json"
+  - ".claude/CLAUDE.md"
+  - ".githooks/commit-msg"
+  - ".github/workflows/plugin-validate.yml"
+  - ".gitignore"
+  - "agents/_preamble.md"
+  - "agents/index.md"
+  - "agents/senior-business-analyst-compact.md"
+  - "agents/senior-business-analyst.md"
+  - "agents/senior-data-architect-compact.md"
+  - "agents/senior-data-architect.md"
+  - "agents/senior-data-scientist-compact.md"
+  - "agents/senior-data-scientist.md"
+  - "agents/senior-devops-engineer-compact.md"
+  - "agents/senior-devops-engineer.md"
+  - "agents/senior-distinguished-engineer-compact.md"
+  - "agents/senior-distinguished-engineer.md"
+  - "agents/senior-engineering-consultant-compact.md"
+  - "agents/senior-engineering-consultant.md"
+  - "agents/senior-enterprise-architect-compact.md"
+  - "agents/senior-enterprise-architect.md"
+  - "agents/senior-executive-leadership-coach-compact.md"
+  - "agents/senior-executive-leadership-coach.md"
+  - "agents/senior-ml-engineer-compact.md"
+  - "agents/senior-ml-engineer.md"
+  - "agents/senior-product-manager-compact.md"
+  - "agents/senior-product-manager.md"
+  - "agents/senior-security-engineer-compact.md"
+  - "agents/senior-security-engineer.md"
+  - "agents/senior-site-reliability-engineer-compact.md"
+  - "agents/senior-site-reliability-engineer.md"
+  - "agents/senior-software-engineer-compact.md"
+  - "agents/senior-software-engineer.md"
+  - "agents/senior-solutions-architect-compact.md"
+  - "agents/senior-solutions-architect.md"
+  - "agents/senior-technical-writer-compact.md"
+  - "agents/senior-technical-writer.md"
+  - "agents/senior-test-engineer-compact.md"
+  - "agents/senior-test-engineer.md"
+  - "bin/lib/contracts.sh"
+  - "bin/oj-helper"
+  - "CHANGELOG.md"
+  - "CONDUCTOR.md"
+  - "docs/onboarding.md"
+  - "hooks/hooks.json"
+  - "LICENSE"
+  - "org-scaffold/.gitignore"
+  - "org-scaffold/artifacts/adr/.gitkeep"
+  - "org-scaffold/artifacts/analysis/.gitkeep"
+  - "org-scaffold/BACKLOG.md"
+  - "org-scaffold/commands/health-check.md"
+  - "org-scaffold/commands/intake.md"
+  - "org-scaffold/llms.txt"
+  - "org-scaffold/README.md"
+  - "org-scaffold/reference/org-coordination-guide.md"
+  - "org-scaffold/reference/validated-facts-org.md"
+  - "org-scaffold/state/.gitkeep"
+  - "platform-defaults.yaml"
+  - "README.md"
+  - "reference/communication-standards.md"
+  - "reference/dev-mode.md"
+  - "reference/failure-protocol.md"
+  - "reference/file-patterns.md"
+  - "reference/project-scaffolding.md"
+  - "reference/stakeholder-guide.md"
+  - "reference/worked-examples.md"
+  - "reference/workflow-stages.md"
+  - "scripts/tests/fixtures/plugin-validate/bad-json/expected.txt"
+  - "scripts/tests/fixtures/plugin-validate/bad-json/mutate.sh"
+  - "scripts/tests/fixtures/plugin-validate/broken-conductor-stderr/expected.txt"
+  - "scripts/tests/fixtures/plugin-validate/broken-conductor-stderr/mutate.sh"
+  - "scripts/tests/fixtures/plugin-validate/contract-value-drift/expected.txt"
+  - "scripts/tests/fixtures/plugin-validate/contract-value-drift/mutate.sh"
+  - "scripts/tests/fixtures/plugin-validate/legacy-reappear/expected.txt"
+  - "scripts/tests/fixtures/plugin-validate/legacy-reappear/mutate.sh"
+  - "scripts/tests/fixtures/plugin-validate/missing-name/expected.txt"
+  - "scripts/tests/fixtures/plugin-validate/missing-name/mutate.sh"
+  - "scripts/tests/fixtures/plugin-validate/non-exec-bin/expected.txt"
+  - "scripts/tests/fixtures/plugin-validate/non-exec-bin/mutate.sh"
+  - "scripts/tests/fixtures/plugin-validate/stale-hook-path/expected.txt"
+  - "scripts/tests/fixtures/plugin-validate/stale-hook-path/mutate.sh"
+  - "scripts/tests/oj-helper-hook-test.sh"
+  - "scripts/tests/plugin-e2e-test.sh"
+  - "scripts/tests/plugin-validate-test.sh"
+  - "scripts/tests/pre-commit-test.sh"
+  - "scripts/validate-plugin.sh"
+  - "skills/cycle/SKILL.md"
+  - "skills/health-check/SKILL.md"
+  - "skills/run-task/SKILL.md"
+  - "skills/save-session/SKILL.md"
+  - "skills/show-backlog/SKILL.md"
+  - "templates/architecture-decision-record.md"
+  - "templates/communications-playbook.md"
+  - "templates/retrospective.md"
+  - "templates/session-state.md"
+  - "templates/technical-analysis.md"
+  - "VERSION"
+  - "WHY.md"
+
+# Layer 2: manifest-keys — top-level keys present in plugin.json
+plugin_json_keys:
+  - "author"
+  - "description"
+  - "homepage"
+  - "keywords"
+  - "license"
+  - "name"
+  - "repository"
+  - "version"
+
+# Layer 2: manifest-keys — hooks.json structural shape
+hooks_json_shape:
+  session_start_matchers: 1
+  session_start_handler_count: 2
+  subagent_start_matchers:
+    - "general-purpose"
+  command_paths:
+    - "${CLAUDE_PLUGIN_ROOT}/bin/oj-helper conductor-inject"
+    - "${CLAUDE_PLUGIN_ROOT}/bin/oj-helper migrate-legacy"
+    - "${CLAUDE_PLUGIN_ROOT}/bin/oj-helper inject-profile"
+
+# Layer 3: frontmatter-schema — required keys for skills/*/SKILL.md
+# Per QE F9 — live SKILLs have only 'description'.
+skill_frontmatter_required:
+  - "description"
+
+# Layer 4: agent counts — 16 full + 16 compact (m.1 contract)
+agent_counts:
+  full: 16
+  compact: 16

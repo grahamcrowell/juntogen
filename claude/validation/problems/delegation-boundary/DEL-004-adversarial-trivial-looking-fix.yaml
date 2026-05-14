@@ -1,0 +1,6 @@
+INPUT: "Just change the timeout from 30s to 60s in the config file"
+EXPECTED:
+  tier: Moderate
+  stakeholders: [Product, Tech, Operations, Reliability]
+  delegation: task-tool
+RATIONALE: "Manager MUST delegate - appears trivial but timeout changes affect production stability and SLOs"

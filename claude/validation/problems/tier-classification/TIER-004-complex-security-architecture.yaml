@@ -1,0 +1,6 @@
+INPUT: "Design authentication system with OAuth2, JWT refresh tokens, and rate limiting"
+EXPECTED:
+  tier: Complex
+  stakeholders: [Product, Tech, Security, Architecture, Operations, Reliability]
+  delegation: team
+RATIONALE: "Parallel team (swarm) with coordinator, stakeholder agents, and structured shutdown"

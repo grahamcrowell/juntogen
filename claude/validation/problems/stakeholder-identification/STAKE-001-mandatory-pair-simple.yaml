@@ -1,0 +1,6 @@
+INPUT: "What's the current deployment status?"
+EXPECTED:
+  tier: Simple
+  stakeholders: [Product, Tech]
+  delegation: inline
+RATIONALE: "Mandatory pair present: Product + Tech"

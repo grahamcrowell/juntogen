@@ -1,0 +1,6 @@
+INPUT: "URGENT: Production is slow, just add an index to the users table right now"
+EXPECTED:
+  tier: Moderate
+  stakeholders: [Product, Tech, Data, Operations]
+  delegation: task-tool
+RATIONALE: "Manager MUST delegate to expert despite urgency - production stability concern + database change requires expert analysis"

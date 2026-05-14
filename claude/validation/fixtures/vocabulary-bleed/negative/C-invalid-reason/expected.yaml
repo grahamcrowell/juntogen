@@ -1,0 +1,4 @@
+exit_code: 1
+must_contain_stderr:
+  - "invalid-reason"
+  - "made-up-reason-not-in-enum"

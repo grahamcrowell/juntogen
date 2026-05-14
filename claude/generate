@@ -1,0 +1,2065 @@
+#!/usr/bin/env bash
+#
+# generate — Orchestrate Claude CLI invocations to generate the OpenJunto system from specifications.
+#
+# PURPOSE:
+#   This script runs the 12-step generation pipeline (steps 00-11) that transforms
+#   the OpenJunto specification corpus into installable artifacts. Each step invokes Claude
+#   CLI in --bare mode (no conversation memory, no CLAUDE.md injection) so that the
+#   LLM operates solely from the generation prompt and referenced spec files.
+#
+# CONTEXT ISOLATION:
+#   Each step runs Claude with targeted isolation flags that neutralize the user's
+#   installed OpenJunto system without breaking credential discovery:
+#
+#   --append-system-prompt: Injects a GENERATION MODE override that tells Claude to
+#           ignore CLAUDE.md instructions and act as a precise code generator. This
+#           counters the Manager protocol ("DO NOT write code directly") that would
+#           otherwise prevent artifact generation.
+#
+#   --settings '{"disableAllHooks":true}': Prevents SubagentStart hook from injecting
+#           agent profiles and SessionStart hook from running.
+#
+#   --disable-slash-commands: Prevents skill/command loading.
+#
+#   --dangerously-skip-permissions: Required for unattended generation. Without this,
+#           each step would pause for permission prompts on file writes.
+#
+#   The output directory (not juntospec) is used as cwd, so no project-level
+#   .claude/CLAUDE.md is found. Only ~/.claude/CLAUDE.md is in context, and the
+#   append-system-prompt override neutralizes it.
+#
+#   If ANTHROPIC_API_KEY is set, --bare is used instead (stronger isolation, skips
+#   CLAUDE.md entirely). This is recommended for CI pipelines.
+#
+# SEQUENTIAL EXECUTION:
+#   Steps run in strict order: 00 -> 01 -> 02 -> 03 -> 04 -> 05 -> 06 -> 07 -> 08 -> 09 -> 10 -> 11
+#   While some steps have independent dependencies (04/05/06 only need 01), sequential
+#   execution in v1 simplifies error handling and log readability. Parallelization is
+#   a future optimization.
+#
+# IDEMPOTENCY:
+#   After successful completion + verification, each step writes a .step-NN.done sentinel
+#   file. Re-runs skip completed steps unless --force or --from-step is specified.
+#
+# PLACEHOLDER RESOLUTION (H1):
+#   Generation prompts contain {OJ_SOURCE} and /path/to/juntospec/ placeholders.
+#   Before passing a prompt to Claude, this script resolves them to the actual
+#   SPEC_DIR path. Without this, Claude reads nonexistent paths and degrades silently.
+#
+# THREE-WAY PATH LAYERING (BL-025-h, TENSION-1):
+#   {OJ_SOURCE}   = the path to an existing OpenJunto installation, used by step
+#                   prompts as a format-reference for output verification only.
+#                   Resolved from --oj-source. If absent, prompts containing
+#                   {OJ_SOURCE} are left unresolved and Claude degrades per the
+#                   step-01 spec ("If available locally, these reference files
+#                   provide format verification").
+#   ${SPEC_DIR}   = the juntospec corpus root (the genome). Resolved via the
+#                   precedence chain in resolve_spec_dir() below: --spec-dir
+#                   flag > $OJ_SPEC_DIR env > sibling probe > hard-fail.
+#                   Distinct from {OJ_SOURCE} — a SPEC_DIR is a checkout of
+#                   juntospec, an OJ_SOURCE is an installed plugin tree.
+#   The contract  = ${SPEC_DIR}/platform-contract.yaml. Loaded ONCE at generator
+#                   startup by load_contract() and exported as OJ_PRIMITIVE_NAMES /
+#                   OJ_CONTRACT_VERSION / OJ_PRIMITIVE_VOCAB_REGEX so the values
+#                   propagate to substituted prompt builds AND to validation
+#                   scripts called downstream.
+#
+# COMPATIBILITY:
+#   Requires bash 3.2+ (macOS default). Does not use associative arrays or other bash 4+ features.
+#
+
+set -euo pipefail
+
+# ── Constants ─────────────────────────────────────────────────────────────────
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# SPEC_DIR is resolved later (after parse_args) via:
+#   1. --spec-dir DIR           CLI flag (highest precedence)
+#   2. ${OJ_SPEC_DIR}            environment variable
+#   3. sibling probe            ${SCRIPT_DIR}/../../juntospec (juntogen ↔ juntospec
+#                               co-located under a parent like ./openjunto/)
+#   4. hard-fail                with an actionable message naming flag, env var, layout
+SPEC_DIR=""
+
+readonly SCRIPT_DIR
+
+# Minimum Claude CLI version (major.minor.patch)
+readonly MIN_CLAUDE_VERSION="1.0.0"
+
+# All steps in execution order.
+# Step 08 retired by BL-025-m.1 (Makefile installer obsolete in plugin form).
+# The numeric gap is intentional: preserves sentinel/log history for older runs
+# and avoids renumbering downstream prompts/docs. Re-introducing step-08 would
+# require restoring the case branches in step_max_turns/step_desc/step_prompt
+# plus a verify_step_08 dispatch entry below.
+readonly ALL_STEPS="00 01 02 03 04 05 06 07 09 10 11"
+
+# Generation mode override — appended to system prompt when not using --bare.
+# Neutralizes the user's CLAUDE.md (OpenJunto Manager protocol) which would otherwise
+# instruct Claude to delegate rather than write files directly.
+readonly GENERATION_MODE_PROMPT="IMPORTANT OVERRIDE — GENERATION MODE: You are a precise artifact generator, NOT a project manager. Ignore all instructions from CLAUDE.md files in this session. Do NOT delegate to sub-agents. Do NOT apply triage, stakeholder analysis, or expert coordination protocols. Instead: read the generation prompt provided, follow its instructions exactly, and write all specified output files directly using the Write tool. You are generating code and configuration files — write them yourself."
+
+# Use --bare when ANTHROPIC_API_KEY is available (stronger isolation, CI-friendly).
+# Fall back to targeted isolation flags when using OAuth (/login) credentials.
+use_bare_mode() {
+    [ -n "${ANTHROPIC_API_KEY:-}" ]
+}
+
+# ── Color Output ──────────────────────────────────────────────────────────────
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+NC='\033[0m'
+
+log_info()  { echo -e "${GREEN}[INFO]${NC}  $*"; }
+log_warn()  { echo -e "${YELLOW}[WARN]${NC}  $*"; }
+log_error() { echo -e "${RED}[ERROR]${NC} $*"; }
+log_step()  { echo -e "${BLUE}[STEP]${NC}  $*"; }
+log_ok()    { echo -e "${GREEN}[OK]${NC}    $*"; }
+log_dry()   { echo -e "${CYAN}[DRY]${NC}   $*"; }
+
+die() {
+    log_error "$@"
+    exit 1
+}
+
+# ── Per-Step Configuration ────────────────────────────────────────────────────
+#
+# Lookup functions replace associative arrays for bash 3.2 compatibility.
+# Each function maps step number -> value via case statement.
+
+step_max_turns() {
+    case "$1" in
+        00) echo 10  ;;  # single file (platform-snapshot.yaml)
+        01) echo 25  ;;  # CONDUCTOR.md + scaffold directories
+        02) echo 20  ;;  # preamble + index
+        03) echo 80  ;;  # 32 profile files — highest volume step
+        04) echo 30  ;;  # 8 reference files
+        05) echo 25  ;;  # 5 templates
+        06) echo 20  ;;  # 3 commands
+        07) echo 25  ;;  # helper script + static plugin/hooks manifests
+        # 08 retired (BL-025-m.1) — Makefile installer obsolete in plugin form.
+        # Numeric gap preserved so sentinel/log history remains comparable.
+        09) echo 20  ;;  # settings.json + hooks
+        10) echo 30  ;;  # documentation (reads all specs)
+        11) echo 25  ;;  # Org scaffold
+        *)  die "Unknown step: $1" ;;
+    esac
+}
+
+step_desc() {
+    case "$1" in
+        00) echo "Platform capability ingestion" ;;
+        01) echo "Scaffold and protocol (CONDUCTOR.md)" ;;
+        02) echo "Agent preamble and index" ;;
+        03) echo "Agent profiles (16 full + 16 compact)" ;;
+        04) echo "Reference files (8 documents)" ;;
+        05) echo "Templates (5 deliverables)" ;;
+        06) echo "Commands (3 slash commands)" ;;
+        07) echo "Helper script (oj-helper) + static plugin/hooks manifests" ;;
+        # 08 retired (BL-025-m.1)
+        09) echo "Settings and hooks (settings.json)" ;;
+        10) echo "Documentation (README, WHY, onboarding)" ;;
+        11) echo "Org coordination scaffold" ;;
+        *)  die "Unknown step: $1" ;;
+    esac
+}
+
+step_prompt() {
+    case "$1" in
+        00) echo "step-00-platform-ingestion.md" ;;
+        01) echo "step-01-scaffold-and-protocol.md" ;;
+        02) echo "step-02-agent-preamble-and-index.md" ;;
+        03) echo "step-03-agent-profiles.md" ;;
+        04) echo "step-04-reference-files.md" ;;
+        05) echo "step-05-templates.md" ;;
+        06) echo "step-06-commands.md" ;;
+        07) echo "step-07-helper-script.md" ;;
+        # 08 retired (BL-025-m.1) — prompt file removed.
+        09) echo "step-09-settings-and-hooks.md" ;;
+        10) echo "step-10-documentation.md" ;;
+        11) echo "step-11-org-scaffold.md" ;;
+        *)  die "Unknown step: $1" ;;
+    esac
+}
+
+# ── Verification Helpers ─────────────────────────────────────────────────────
+
+check_file() {
+    local filepath="$1"
+    if [ ! -f "${filepath}" ]; then
+        log_error "Missing expected file: ${filepath}"
+        return 1
+    fi
+    if [ ! -s "${filepath}" ]; then
+        log_error "File is empty: ${filepath}"
+        return 1
+    fi
+    return 0
+}
+
+check_file_exists() {
+    local filepath="$1"
+    if [ ! -f "${filepath}" ]; then
+        log_error "Missing expected file: ${filepath}"
+        return 1
+    fi
+    return 0
+}
+
+check_dir() {
+    local dirpath="$1"
+    if [ ! -d "${dirpath}" ]; then
+        log_error "Missing expected directory: ${dirpath}"
+        return 1
+    fi
+    return 0
+}
+
+# ── Expected Outputs Per Step (H2) ───────────────────────────────────────────
+#
+# Each verify function returns 0 if all expected outputs exist and are non-empty.
+# These do NOT rely solely on exit codes — they check actual file system state.
+
+verify_step_00() {
+    local dir="$1"
+    local ok=0
+    check_file "${dir}/platform-snapshot.yaml" || ok=1
+    return $ok
+}
+
+# ── BL-025-m.1: verification functions retargeted for plugin-tree-direct ──
+# Pre-cycle: outputs lived under `${dir}/src/`. Post-cycle: outputs live at
+# `${dir}/` root in plugin shape — see oj-claude/ for the canonical tree.
+# Notable changes:
+#   - src/CLAUDE.md         → CONDUCTOR.md (at OUTPUT_DIR root)
+#   - src/agents/           → agents/ (flat layout)
+#   - src/agents/compact/   → DELETED; flat layout uses *-compact.md suffix
+#   - src/templates/        → templates/
+#   - src/commands/         → DELETED; plugin uses skills/
+#   - src/reference/        → reference/
+#   - src/settings.json     → DELETED (plugin doesn't ship settings.json)
+#   - src/org-scaffold/     → DEFERRED to BL-025-l/m.2 (commented out below)
+
+verify_step_01() {
+    local dir="$1"
+    local ok=0
+    check_file "${dir}/CONDUCTOR.md" || ok=1
+    check_dir  "${dir}/agents" || ok=1
+    check_dir  "${dir}/templates" || ok=1
+    check_dir  "${dir}/reference" || ok=1
+    return $ok
+}
+
+verify_step_02() {
+    local dir="$1"
+    local ok=0
+    check_file "${dir}/agents/_preamble.md" || ok=1
+    check_file "${dir}/agents/index.md" || ok=1
+    return $ok
+}
+
+verify_step_03() {
+    local dir="$1"
+    local ok=0
+    local full_count compact_count
+
+    # 16 full profiles in agents/ (excluding _preamble.md, index.md, *-compact.md)
+    full_count=$(find "${dir}/agents" -maxdepth 1 -name '*.md' \
+        ! -name '_preamble.md' ! -name 'index.md' ! -name '*-compact.md' \
+        -type f 2>/dev/null | wc -l | tr -d ' ')
+    if [ "${full_count}" -lt 16 ]; then
+        log_error "Expected 16 full profiles in agents/, found ${full_count}"
+        ok=1
+    fi
+
+    # 16 compact profiles in agents/*-compact.md (flat layout per BL-025-m.1)
+    compact_count=$(find "${dir}/agents" -maxdepth 1 -name '*-compact.md' -type f 2>/dev/null | wc -l | tr -d ' ')
+    if [ "${compact_count}" -lt 16 ]; then
+        log_error "Expected 16 compact profiles (agents/*-compact.md), found ${compact_count}"
+        ok=1
+    fi
+
+    return $ok
+}
+
+verify_step_04() {
+    local dir="$1"
+    local ok=0
+    local f
+    for f in \
+        "workflow-stages.md" \
+        "stakeholder-guide.md" \
+        "worked-examples.md" \
+        "dev-mode.md" \
+        "failure-protocol.md" \
+        "file-patterns.md" \
+        "project-scaffolding.md" \
+        "communication-standards.md" \
+    ; do
+        check_file "${dir}/reference/${f}" || ok=1
+    done
+    return $ok
+}
+
+verify_step_05() {
+    local dir="$1"
+    local ok=0
+    local f
+    for f in \
+        "technical-analysis.md" \
+        "architecture-decision-record.md" \
+        "retrospective.md" \
+        "session-state.md" \
+        "communications-playbook.md" \
+    ; do
+        check_file "${dir}/templates/${f}" || ok=1
+    done
+    return $ok
+}
+
+verify_step_06() {
+    # Step-06 generates 5 plugin skills at skills/<name>/SKILL.md
+    # (BL-025-m.2 prompt rewrite). Verification auto-enumerates the
+    # skills/ subdirectories rather than hard-coding the 5 names — that
+    # way a future skill add (or rename) in the step-06 prompt does not
+    # require touching this verifier. Per-skill contract checks mirror
+    # the plugin host's load contract:
+    #   - frontmatter must start with `---` on line 1
+    #   - frontmatter must contain a `description:` line
+    #   - body must exceed 5 lines (a near-empty file is a generation
+    #     failure; the plugin host accepts it silently but the cycle
+    #     gate cannot)
+    # Mirrors the for-loop pattern in verify_step_04 / verify_step_05.
+    local dir="$1"
+    local ok=0
+    check_dir "${dir}/skills" || ok=1
+    if [ ! -d "${dir}/skills" ]; then
+        return $ok
+    fi
+    # Enumerate skills/*/SKILL.md. find pipeline is BSD-portable.
+    local found=0
+    local skill_md
+    while IFS= read -r skill_md; do
+        [ -z "${skill_md}" ] && continue
+        found=$((found + 1))
+        check_file "${skill_md}" || ok=1
+        # frontmatter: first line must be exactly `---`
+        local first_line
+        first_line=$(head -n1 "${skill_md}" 2>/dev/null)
+        if [ "${first_line}" != "---" ]; then
+            log_error "Step 06: ${skill_md} does not start with YAML frontmatter (line 1 != '---')"
+            ok=1
+        fi
+        # `description:` must appear in the file (typically in frontmatter)
+        if ! grep -q '^description:' "${skill_md}"; then
+            log_error "Step 06: ${skill_md} missing required 'description:' field"
+            ok=1
+        fi
+        # body length: total lines must exceed 5 (the plugin host accepts
+        # near-empty skills silently; we treat them as generation
+        # failures so the cycle gate catches them)
+        local nlines
+        nlines=$(wc -l < "${skill_md}" | tr -d ' ')
+        if [ "${nlines}" -le 5 ]; then
+            log_error "Step 06: ${skill_md} has ${nlines} lines (require >5)"
+            ok=1
+        fi
+    done < <(find "${dir}/skills" -mindepth 2 -maxdepth 2 -name 'SKILL.md' -type f 2>/dev/null | sort)
+    if [ "${found}" -eq 0 ]; then
+        log_error "Step 06: no skills/<name>/SKILL.md files found under ${dir}/skills"
+        ok=1
+    fi
+    return $ok
+}
+
+verify_step_07() {
+    local dir="$1"
+    local ok=0
+    # bin/oj-helper — LLM-generated helper script (PROSE per output_classes).
+    check_file "${dir}/bin/oj-helper" || ok=1
+    if [ -f "${dir}/bin/oj-helper" ] && [ ! -x "${dir}/bin/oj-helper" ]; then
+        log_warn "bin/oj-helper exists but is not executable"
+    fi
+    # bin/lib/contracts.sh — DATA (static, deterministic).
+    check_file "${dir}/bin/lib/contracts.sh" || ok=1
+    # Static plugin manifest + hooks manifest (BL-025-m.1 Deliverable 5).
+    # These are deterministic templates emitted by lib/emit-static-plugin-manifest.sh,
+    # invoked from step-07 alongside the LLM helper-script generation.
+    check_file "${dir}/.claude-plugin/plugin.json" || ok=1
+    check_file "${dir}/hooks/hooks.json" || ok=1
+    return $ok
+}
+
+# verify_step_08 retired (BL-025-m.1). Makefile installer obsolete in plugin form.
+# Numeric gap preserved — no renumber.
+
+verify_step_09() {
+    # BL-025-m.2: step-09 retired. The pre-cycle prompt emitted a legacy
+    # settings.json (under the retired src/ wrapper); plugin form does
+    # NOT ship settings.json — it is user-configured under ~/.claude/,
+    # outside the plugin distribution. Platform-fact bindings the old
+    # prompt resolved (SubagentStart hook matcher, reasoning-tier model
+    # api_id) have been relocated to step-07 (inject-profile filter +
+    # static hooks.json emit) and step-01 (CONDUCTOR.md model table).
+    #
+    # The step is preserved in ALL_STEPS for the numeric gap: sentinel
+    # / log archives stay comparable across pipeline versions, and
+    # downstream prompts/docs do not need to renumber. verify_step_09
+    # returns 0 unconditionally because the rewritten prompt produces
+    # no artifacts.
+    return 0
+}
+
+verify_step_10() {
+    local dir="$1"
+    local ok=0
+    check_file "${dir}/README.md" || ok=1
+    check_file "${dir}/WHY.md" || ok=1
+    check_file "${dir}/docs/onboarding.md" || ok=1
+    return $ok
+}
+
+verify_step_11() {
+    # BL-025-m.2: capped scope. Step-11 prompt's `src/` wrapper was
+    # mechanically dropped (org-scaffold/ now lives at plugin root in
+    # the prompt's output paths). The tree-placement decision is
+    # deferred to BL-025-l.1; until then, verification covers the one
+    # high-confidence anchor — CONDUCTOR.md at the plugin root must
+    # already exist from step-01 (a sanity check that step-11 didn't
+    # accidentally clobber upstream output).
+    #
+    # Detailed per-file org-scaffold checks remain commented out with
+    # the TODO(BL-025-l.1) marker so the restoration target is clear
+    # when the tree-placement question lands.
+    local dir="$1"
+    local ok=0
+    check_file "${dir}/CONDUCTOR.md" || ok=1
+    # TODO(BL-025-l.1): restore per-file org-scaffold checks when tree
+    # placement is resolved. Original block (preserved for reference):
+    #   check_dir         "${dir}/org-scaffold" || ok=1
+    #   check_file        "${dir}/org-scaffold/README.md" || ok=1
+    #   check_file        "${dir}/org-scaffold/BACKLOG.md" || ok=1
+    #   check_file        "${dir}/org-scaffold/.gitignore" || ok=1
+    #   check_file        "${dir}/org-scaffold/llms.txt" || ok=1
+    #   check_dir         "${dir}/org-scaffold/reference" || ok=1
+    #   check_file        "${dir}/org-scaffold/reference/validated-facts-org.md" || ok=1
+    #   check_file        "${dir}/org-scaffold/reference/org-coordination-guide.md" || ok=1
+    #   check_dir         "${dir}/org-scaffold/commands" || ok=1
+    #   check_file        "${dir}/org-scaffold/commands/health-check.md" || ok=1
+    #   check_file        "${dir}/org-scaffold/commands/intake.md" || ok=1
+    #   check_dir         "${dir}/org-scaffold/state" || ok=1
+    #   check_file_exists "${dir}/org-scaffold/state/.gitkeep" || ok=1
+    #   check_dir         "${dir}/org-scaffold/artifacts" || ok=1
+    #   check_dir         "${dir}/org-scaffold/artifacts/analysis" || ok=1
+    #   check_file_exists "${dir}/org-scaffold/artifacts/analysis/.gitkeep" || ok=1
+    #   check_dir         "${dir}/org-scaffold/artifacts/adr" || ok=1
+    #   check_file_exists "${dir}/org-scaffold/artifacts/adr/.gitkeep" || ok=1
+    return $ok
+}
+
+# Dispatch to the correct verify function. Step-08 dispatch removed (BL-025-m.1).
+verify_step() {
+    local step="$1"
+    local dir="$2"
+    case "${step}" in
+        00) verify_step_00 "${dir}" ;;
+        01) verify_step_01 "${dir}" ;;
+        02) verify_step_02 "${dir}" ;;
+        03) verify_step_03 "${dir}" ;;
+        04) verify_step_04 "${dir}" ;;
+        05) verify_step_05 "${dir}" ;;
+        06) verify_step_06 "${dir}" ;;
+        07) verify_step_07 "${dir}" ;;
+        # 08 retired (BL-025-m.1)
+        09) verify_step_09 "${dir}" ;;
+        10) verify_step_10 "${dir}" ;;
+        11) verify_step_11 "${dir}" ;;
+        *)  log_warn "No verification function for step ${step}"; return 0 ;;
+    esac
+}
+
+# ── Static-Artifact Emit Dispatch (BL-025-m.2) ────────────────────────
+# After a step's LLM invocation succeeds (Claude exit 0) but BEFORE
+# verify_step() runs, dispatch to the static-emit helper for any DATA-
+# class artifacts that step is responsible for. The helper writes
+# byte-deterministic files alongside the LLM output; the verifier then
+# sees both as a single coherent step output.
+#
+# Currently only step-07 has DATA-class siblings (plugin.json + hooks.json
+# + bin/lib/contracts.sh). The helper functions live in
+# lib/emit-static-plugin-manifest.sh — sourced lazily here so the
+# generator startup cost stays unchanged when no static emit fires.
+#
+# Mirrors verify_step() dispatch pattern. Failure to source the helper
+# OR a non-zero exit from any emit function aborts the step with a
+# clear error (matches the verifier's fail-loud contract).
+static_artifacts_emit() {
+    local step="$1"
+    local dir="$2"
+    case "${step}" in
+        07)
+            local helper="${SCRIPT_DIR}/lib/emit-static-plugin-manifest.sh"
+            if [ ! -f "${helper}" ]; then
+                log_error "static_artifacts_emit: helper not found at ${helper}"
+                return 1
+            fi
+            # Source the helper to expose emit_plugin_json / emit_hooks_json
+            # / emit_contracts_sh. Sourcing in a subshell would scope the
+            # functions away; the generator script is bash, so sourcing
+            # here is safe — the helper declares no top-level state that
+            # would conflict with the generator.
+            # shellcheck source=/dev/null
+            . "${helper}" || { log_error "static_artifacts_emit: failed to source ${helper}"; return 1; }
+            # VERSION resolution: prefer SPEC_DIR/VERSION (the genome's
+            # source-of-truth) and fall back to a static 0.0.1 when
+            # absent (m.2 spike mode). The version flows into the
+            # plugin.json's `"version":` field — m.3 will tighten the
+            # fallback path.
+            local version="0.0.1"
+            if [ -f "${SPEC_DIR}/VERSION" ]; then
+                version=$(head -n1 "${SPEC_DIR}/VERSION" | tr -d ' \r\n\t')
+            fi
+            emit_plugin_json       "${dir}" "${version}" >/dev/null \
+                || { log_error "static_artifacts_emit: emit_plugin_json failed"; return 1; }
+            emit_hooks_json        "${dir}"              >/dev/null \
+                || { log_error "static_artifacts_emit: emit_hooks_json failed"; return 1; }
+            emit_contracts_sh      "${dir}"              >/dev/null \
+                || { log_error "static_artifacts_emit: emit_contracts_sh failed"; return 1; }
+            emit_platform_defaults "${dir}"              >/dev/null \
+                || { log_error "static_artifacts_emit: emit_platform_defaults failed"; return 1; }
+            # Hand-cut scripts/ tree (validate-plugin.sh + scripts/tests/*) —
+            # NOT regenerated by the LLM; static-copied from OJ_CLAUDE_DIR
+            # so the regen tree carries the plugin-side test harness. Failure
+            # is non-fatal if OJ_CLAUDE_DIR is unset/unavailable (spike-mode
+            # and disconnected runs are still useful for the LLM artifacts).
+            if ! emit_plugin_scripts "${dir}" >/dev/null 2>&1; then
+                log_warn "  emit_plugin_scripts: source not found (OJ_CLAUDE_DIR=${OJ_CLAUDE_DIR:-unset}); skipping"
+            fi
+            log_ok "  Static manifests emitted (plugin.json, hooks.json, bin/lib/contracts.sh, platform-defaults.yaml; scripts/ copied if available)"
+            ;;
+        *)
+            # No-op for steps without DATA-class siblings.
+            return 0
+            ;;
+    esac
+}
+
+# ── Usage ─────────────────────────────────────────────────────────────────────
+
+usage() {
+    cat <<EOF
+$(echo -e "${BOLD}")generate$(echo -e "${NC}") — Generate the OpenJunto system from specifications via Claude CLI.
+
+$(echo -e "${BOLD}")USAGE$(echo -e "${NC}")
+    generate <OUTPUT_DIR> [OPTIONS]
+
+$(echo -e "${BOLD}")ARGUMENTS$(echo -e "${NC}")
+    OUTPUT_DIR                 Target directory for generated artifacts (required).
+                               Created if it does not exist. All Claude invocations
+                               use this as their working directory.
+
+$(echo -e "${BOLD}")OPTIONS$(echo -e "${NC}")
+    --model MODEL              Claude model to use (default: opus).
+    --from-step NN             Resume from step NN, ignoring prior sentinels.
+    --steps 00,04,05           Run only the specified steps (comma-separated).
+                               Skips dependency checking — assumes operator knows
+                               what they are doing.
+    --platform-declaration F   Copy FILE to OUTPUT_DIR/platform-declaration.yaml
+                               before step-00, enabling CI-reproducible declaration
+                               mode.
+    --oj-source DIR            Path to an existing OpenJunto installation for step-10
+                               format-reference reads (/path/to/openjunto/ placeholders).
+                               If omitted, those placeholders are left unresolved
+                               and Claude degrades gracefully per step-01 spec.
+    --spec-dir DIR             Path to the juntospec corpus root. Overrides
+                               \$OJ_SPEC_DIR env var and the sibling probe.
+                               Strictly disjoint from --oj-source (which targets
+                               an installed plugin tree, not the spec corpus).
+    --force                    Ignore all sentinel files; re-run every step.
+    --dry-run                  Print the claude commands without executing them.
+    --spike STEP               BL-025-m.2: run a single step against a sandbox
+                               sentinel dir, bypassing the BLOCKED guard. For
+                               DATA-class determinism verification only.
+                               Currently only step 07 is approved (static-emit
+                               dispatch test). Each spike is fresh — mutually
+                               exclusive with --from-step / --steps / --force.
+    --force-unlock             Remove a stale regen lock and exit (operator
+                               override). Acts on \${OUTPUT_DIR}/.regen.lock/.
+                               Mutually exclusive with every other mode. Use
+                               only when the lock-holder PID is known-dead;
+                               the script auto-reclaims locks older than 30
+                               minutes without operator action.
+    --help                     Show this help message.
+
+$(echo -e "${BOLD}")EXAMPLES$(echo -e "${NC}")
+    # Full generation into a new directory
+    generate /tmp/junto-build
+
+    # Resume from step-04 after fixing a spec
+    generate /tmp/junto-build --from-step 04
+
+    # Regenerate only profiles and templates
+    generate /tmp/junto-build --steps 03,05 --force
+
+    # CI-reproducible run with a pinned platform declaration
+    generate /tmp/junto-build --platform-declaration platform-declaration.yaml --model sonnet
+
+    # Dry run — see what would execute
+    generate /tmp/junto-build --dry-run
+
+$(echo -e "${BOLD}")ENVIRONMENT$(echo -e "${NC}")
+    ANTHROPIC_API_KEY           Optional. If set, uses --bare mode (full isolation).
+                               If unset, uses OAuth (/login) with targeted isolation
+                               flags (--append-system-prompt override, hooks disabled).
+                               Recommended for CI: export ANTHROPIC_API_KEY=sk-ant-...
+    CLAUDE_MODEL               Override default model (same as --model).
+    OJ_SPEC_DIR                Path to the juntospec corpus root. Used when
+                               --spec-dir is not provided; overridden by it when
+                               present. Sibling probe (juntogen+juntospec under
+                               a common parent) is the final fallback.
+    OJ_CACHE_DIR               Parent directory for per-run sentinel/log
+                               cache (BL-025-m.1). Default: \$HOME/.cache/juntogen.
+                               Each run creates a fresh subdirectory
+                               run-<UTC-timestamp>/ under this parent. Override
+                               to pin runs (e.g. CI artifact uploads) or to
+                               re-use a sentinel set across consecutive
+                               invocations.
+
+    OJ_PRIMITIVE_NAMES         (informational, not user-overridable) Space-joined
+                               primitive names exported by the contract loader
+                               (BL-025-h). Sourced from
+                               \${SPEC_DIR}/platform-contract.yaml at startup.
+    OJ_CONTRACT_VERSION        (informational, not user-overridable) Contract
+                               version string. Forwarded to validation scripts.
+    OJ_PRIMITIVE_VOCAB_REGEX   (informational, not user-overridable) Pipe-joined
+                               regex alternation of primitive names; consumed by
+                               step-prompt-vocabulary-audit.sh and dry-run
+                               validators.
+    OJ_QUIET                   Suppress per-step heartbeat output (every 60s
+                               to stderr). Set to 1 in CI. Watchdog still
+                               fires on timeout regardless.
+
+$(echo -e "${BOLD}")EXIT CODES$(echo -e "${NC}")
+    0    All steps completed successfully.
+    1    Prerequisite check failed (claude not found, auth failure).
+    2    Step execution failed.
+    3    Output verification failed.
+    4    Invalid arguments.
+
+$(echo -e "${BOLD}")SENTINEL FILES$(echo -e "${NC}")
+    After each step passes verification, a .step-NN.done file is written to
+    a per-run cache directory (BL-025-m.1):
+        \${OJ_CACHE_DIR:-\$HOME/.cache/juntogen}/run-<UTC-timestamp>-<PID>/
+    On re-run, steps with existing sentinels are skipped. Use --force to
+    override, or --from-step NN to resume from a specific step. Override
+    the parent via OJ_CACHE_DIR; the per-run subdirectory is created
+    fresh on each invocation. PID suffix prevents same-second collisions
+    between parallel invocations (BL-025-m.2 P4 H3).
+    OUTPUT_DIR is reserved for install-ready artifacts only — sentinels
+    no longer pollute it.
+
+$(echo -e "${BOLD}")CONCURRENCY$(echo -e "${NC}")
+    Each non-dry-run invocation acquires a lock at \${OUTPUT_DIR}/.regen.lock/
+    before any step executes. Concurrent invocations targeting the same
+    OUTPUT_DIR fail-loud with the holder's PID. Locks older than 30 minutes
+    are reclaimed automatically (regen step-03 alone runs ~8 minutes; the
+    window absorbs ~3x peak with margin). For known-dead sub-threshold
+    locks, use --force-unlock.
+
+$(echo -e "${BOLD}")TIMEOUTS$(echo -e "${NC}")
+    Each step is supervised by a pure-bash watchdog: SIGTERM at the budget,
+    SIGKILL 10s later. Budgets: step-03 = 1500s (25min, LLM-heavy profile
+    generation), all others = 900s (15min). A heartbeat line is emitted to
+    stderr every 60s during a running step; suppress with OJ_QUIET=1.
+
+$(echo -e "${BOLD}")STEP-00 MODE SELECTION (T1)$(echo -e "${NC}")
+    When --platform-declaration is provided, step-00 uses declaration mode
+    (CI-reproducible). Otherwise, if running in a live Claude session,
+    step-00 may attempt introspection mode. If neither, it falls back to
+    platform-defaults.yaml (defaults mode). See step-00 prompt for full
+    mode priority logic.
+
+EOF
+}
+
+# ── Argument Parsing ──────────────────────────────────────────────────────────
+
+OUTPUT_DIR=""
+MODEL="${CLAUDE_MODEL:-opus}"
+FROM_STEP=""
+ONLY_STEPS=""
+PLATFORM_DECL=""
+OJ_SOURCE=""
+SPEC_DIR_FLAG=""
+FORCE=false
+DRY_RUN=false
+# BL-025-m.2: --spike STEP runs a single step against a sandbox sentinel
+# directory, bypassing the BLOCKED regen guard. Spike mode is for
+# DATA-class determinism verification only — every spike is fresh, no
+# --from-step resumption, and the allowed step set is narrow (currently
+# only 07, the static-emit dispatch step).
+SPIKE_STEP=""
+
+# --force-unlock removes a stale ${OUTPUT_DIR}/.regen.lock/ and exits.
+# Operator override for the concurrent-regen guard; mutually exclusive
+# with every other mode (--steps, --from-step, --spike, --dry-run, plain
+# run).
+FORCE_UNLOCK=false
+
+# Acquired-lock path (set by acquire_regen_lock() so the EXIT trap can
+# release it). Empty when no lock is held (e.g., dry-run path).
+REGEN_LOCK_DIR=""
+
+parse_args() {
+    if [ $# -eq 0 ]; then
+        usage
+        exit 4
+    fi
+
+    # First positional argument is OUTPUT_DIR
+    case "$1" in
+        --help|-h)
+            usage
+            exit 0
+            ;;
+        --*)
+            die "First argument must be OUTPUT_DIR, got '$1'. See --help."
+            ;;
+        *)
+            OUTPUT_DIR="$1"
+            shift
+            ;;
+    esac
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --model)
+                [ $# -ge 2 ] || die "--model requires a value"
+                MODEL="$2"
+                shift 2
+                ;;
+            --from-step)
+                [ $# -ge 2 ] || die "--from-step requires a step number (00-11)"
+                FROM_STEP="$2"
+                shift 2
+                ;;
+            --steps)
+                [ $# -ge 2 ] || die "--steps requires a comma-separated list (e.g., 00,04,05)"
+                ONLY_STEPS="$2"
+                shift 2
+                ;;
+            --platform-declaration)
+                [ $# -ge 2 ] || die "--platform-declaration requires a file path"
+                PLATFORM_DECL="$2"
+                shift 2
+                ;;
+            --oj-source|--junto-source)
+                # --junto-source accepted as a legacy alias during the rename
+                # transition; new callers should use --oj-source.
+                [ $# -ge 2 ] || die "--oj-source requires a directory path"
+                OJ_SOURCE="$2"
+                shift 2
+                ;;
+            --spec-dir)
+                # Override SPEC_DIR resolution. Highest precedence in the
+                # resolve_spec_dir() lookup chain (--spec-dir > $OJ_SPEC_DIR >
+                # sibling probe > hard-fail). Strictly disjoint from --oj-source
+                # (which targets an installed plugin tree, not the spec corpus).
+                [ $# -ge 2 ] || die "--spec-dir requires a directory path"
+                SPEC_DIR_FLAG="$2"
+                shift 2
+                ;;
+            --force)
+                FORCE=true
+                shift
+                ;;
+            --dry-run)
+                DRY_RUN=true
+                shift
+                ;;
+            --spike)
+                [ $# -ge 2 ] || die "--spike requires a step number (currently only 07 supported)"
+                SPIKE_STEP="$2"
+                # Allowlist: only step-07 is approved for spike mode in m.2.
+                # The static-emit dispatch (plugin.json + hooks.json + contracts.sh)
+                # is the only DATA-class invariant under determinism test.
+                case "${SPIKE_STEP}" in
+                    07) ;;
+                    *) die "--spike currently accepts only step 07; got '${SPIKE_STEP}' (DATA-only determinism scope per BL-025-m.2)" ;;
+                esac
+                shift 2
+                ;;
+            --force-unlock)
+                FORCE_UNLOCK=true
+                shift
+                ;;
+            --help|-h)
+                usage
+                exit 0
+                ;;
+            *)
+                die "Unknown option: $1. See --help."
+                ;;
+        esac
+    done
+
+    # Validate OUTPUT_DIR is set
+    [ -n "${OUTPUT_DIR}" ] || die "OUTPUT_DIR is required. See --help."
+
+    # Resolve OUTPUT_DIR to absolute path
+    if [ "${OUTPUT_DIR}" = "${OUTPUT_DIR#/}" ]; then
+        OUTPUT_DIR="$(pwd)/${OUTPUT_DIR}"
+    fi
+
+    # BL-025-m.2 P4 H2: --spike is mutually exclusive with any resumption /
+    # selection / force flag. Spike runs are always fresh, single-step, and
+    # sandboxed. Previously --from-step (and friends) were silently zeroed
+    # in main() after the spike branch — operator had no signal their flag
+    # was discarded. Hard-die at parse time keeps the contract clear.
+    if [ -n "${SPIKE_STEP}" ]; then
+        if [ -n "${FROM_STEP}" ] || [ -n "${ONLY_STEPS}" ] || [ "${FORCE}" = "true" ]; then
+            die "--spike is mutually exclusive with --from-step / --steps / --force (every spike is fresh)"
+        fi
+    fi
+
+    # Validate --from-step value if provided
+    if [ -n "${FROM_STEP}" ]; then
+        validate_step_number "${FROM_STEP}" "--from-step"
+    fi
+
+    # Validate --steps values if provided
+    if [ -n "${ONLY_STEPS}" ]; then
+        local steps_csv="${ONLY_STEPS}"
+        local s
+        # Split on commas without changing IFS (which would leak into called functions)
+        while [ -n "${steps_csv}" ]; do
+            s="${steps_csv%%,*}"
+            validate_step_number "$s" "--steps"
+            if [ "${steps_csv}" = "${s}" ]; then
+                break  # No more commas
+            fi
+            steps_csv="${steps_csv#*,}"
+        done
+    fi
+
+    # Validate --platform-declaration file exists
+    if [ -n "${PLATFORM_DECL}" ]; then
+        [ -f "${PLATFORM_DECL}" ] || die "Platform declaration file not found: ${PLATFORM_DECL}"
+        # Resolve to absolute path
+        if [ "${PLATFORM_DECL}" = "${PLATFORM_DECL#/}" ]; then
+            PLATFORM_DECL="$(pwd)/${PLATFORM_DECL}"
+        fi
+    fi
+
+    # Validate --oj-source directory exists
+    if [ -n "${OJ_SOURCE}" ]; then
+        [ -d "${OJ_SOURCE}" ] || die "OpenJunto source directory not found: ${OJ_SOURCE}"
+        # Resolve to absolute path
+        if [ "${OJ_SOURCE}" = "${OJ_SOURCE#/}" ]; then
+            OJ_SOURCE="$(pwd)/${OJ_SOURCE}"
+        fi
+    fi
+
+    # Validate --spec-dir if provided (existence/path-resolution checked here;
+    # resolution-vs-fallback logic lives in resolve_spec_dir() below).
+    if [ -n "${SPEC_DIR_FLAG}" ]; then
+        [ -d "${SPEC_DIR_FLAG}" ] || die "--spec-dir directory not found: ${SPEC_DIR_FLAG}"
+        if [ "${SPEC_DIR_FLAG}" = "${SPEC_DIR_FLAG#/}" ]; then
+            SPEC_DIR_FLAG="$(pwd)/${SPEC_DIR_FLAG}"
+        fi
+    fi
+
+    # --force-unlock is mutually exclusive with every other mode. Pure
+    # operator-override path: removes ${OUTPUT_DIR}/.regen.lock/ and exits.
+    if [ "${FORCE_UNLOCK}" = "true" ]; then
+        if [ -n "${FROM_STEP}" ] || [ -n "${ONLY_STEPS}" ] || [ "${FORCE}" = "true" ] \
+           || [ "${DRY_RUN}" = "true" ] || [ -n "${SPIKE_STEP}" ]; then
+            die "--force-unlock is mutually exclusive with --from-step / --steps / --force / --dry-run / --spike"
+        fi
+    fi
+}
+
+# Resolve SPEC_DIR via the documented precedence chain:
+#   1. --spec-dir flag             (parsed into SPEC_DIR_FLAG)
+#   2. $OJ_SPEC_DIR env var        (preserved across child processes for the
+#                                   downstream vocabulary-audit invocation)
+#   3. sibling probe               (${SCRIPT_DIR}/../../juntospec — assumes
+#                                   juntogen and juntospec are siblings under
+#                                   a common parent, matching the OpenJunto
+#                                   organization layout)
+#   4. hard-fail                   actionable message naming flag, env var,
+#                                   and the expected co-located layout
+#
+# A previous version computed SPEC_DIR=${SCRIPT_DIR}/../.. unconditionally,
+# which assumed the generator lived inside juntospec (pre-BL-025-f topology).
+# Post-move the generator lives in juntogen, so the assumption is invalid.
+resolve_spec_dir() {
+    local candidate=""
+    local source=""
+
+    if [ -n "${SPEC_DIR_FLAG}" ]; then
+        candidate="${SPEC_DIR_FLAG}"
+        source="--spec-dir flag"
+    elif [ -n "${OJ_SPEC_DIR:-}" ]; then
+        candidate="${OJ_SPEC_DIR}"
+        source="\$OJ_SPEC_DIR env var"
+    else
+        local sibling="${SCRIPT_DIR}/../../juntospec"
+        if [ -d "${sibling}" ]; then
+            candidate="$(cd "${sibling}" && pwd)"
+            source="sibling probe (${sibling})"
+        fi
+    fi
+
+    if [ -z "${candidate}" ]; then
+        die "Cannot locate juntospec corpus root. Provide one of:
+  --spec-dir DIR             explicit path
+  OJ_SPEC_DIR=DIR (env)      exported environment variable
+  sibling layout             juntogen/ and juntospec/ as siblings under a
+                             common parent (recommended; e.g.
+                             /path/to/openjunto/{juntogen,juntospec}).
+Searched: --spec-dir (unset), \$OJ_SPEC_DIR (unset), sibling probe at
+${SCRIPT_DIR}/../../juntospec (not a directory)."
+    fi
+
+    if [ ! -d "${candidate}" ]; then
+        die "Resolved spec dir is not a directory: ${candidate} (source: ${source})"
+    fi
+    if [ ! -f "${candidate}/platform-contract.yaml" ]; then
+        die "Resolved spec dir lacks platform-contract.yaml: ${candidate} (source: ${source}). Did you point at the wrong tree?"
+    fi
+
+    SPEC_DIR="${candidate}"
+    log_info "SPEC_DIR resolved via ${source}: ${SPEC_DIR}"
+}
+
+# Load platform-contract.yaml from ${SPEC_DIR} via load-contract.py and
+# source the resulting bash fragment to export contract-derived globals
+# (BL-025-h):
+#   OJ_PRIMITIVE_NAMES        space-joined primitive names (contract order)
+#   OJ_CONTRACT_VERSION       contract.version string
+#   OJ_PRIMITIVE_VOCAB_REGEX  pipe-joined alternation of regex-escaped names
+#
+# These globals propagate to the LLM prompt build (build_prompt() consults
+# OJ_PRIMITIVE_NAMES for the {CONTRACT_PRIMITIVES} substitution) AND to any
+# validation scripts spawned downstream (the audit / dry-run gates).
+#
+# Failure mode: hard-fail with the actual stderr from load-contract.py so
+# the operator sees the YAML or schema error directly. Never silently
+# degrade — the generator must not run against an unloaded contract.
+load_contract() {
+    local loader="${SCRIPT_DIR}/validation/scripts/lib/load-contract.py"
+    if [ ! -f "${loader}" ]; then
+        die "load-contract.py missing at ${loader} — cannot derive primitives from contract."
+    fi
+    if ! command -v python3 >/dev/null 2>&1; then
+        die "python3 not on PATH — required by load-contract.py"
+    fi
+    local fragment_tmp
+    fragment_tmp=$(mktemp /tmp/oj-contract-fragment.XXXXXX)
+    if ! python3 "${loader}" source-fragment "${SPEC_DIR}/platform-contract.yaml" >"${fragment_tmp}" 2>"${fragment_tmp}.err"; then
+        local err
+        err=$(cat "${fragment_tmp}.err" 2>/dev/null || true)
+        rm -f "${fragment_tmp}" "${fragment_tmp}.err"
+        die "load-contract.py failed to emit source-fragment: ${err}"
+    fi
+    rm -f "${fragment_tmp}.err"
+    # shellcheck source=/dev/null
+    . "${fragment_tmp}"
+    rm -f "${fragment_tmp}"
+    if [ -z "${OJ_PRIMITIVE_NAMES:-}" ] || [ -z "${OJ_CONTRACT_VERSION:-}" ] || [ -z "${OJ_PRIMITIVE_VOCAB_REGEX:-}" ]; then
+        die "load_contract: source-fragment did not export expected globals (OJ_PRIMITIVE_NAMES / OJ_CONTRACT_VERSION / OJ_PRIMITIVE_VOCAB_REGEX). Check load-contract.py output."
+    fi
+    log_info "Contract loaded: version=${OJ_CONTRACT_VERSION}, primitives=[${OJ_PRIMITIVE_NAMES}]"
+}
+
+validate_step_number() {
+    local step="$1"
+    local flag="$2"
+    local valid=false
+    local s
+    for s in ${ALL_STEPS}; do
+        if [ "$s" = "$step" ]; then
+            valid=true
+            break
+        fi
+    done
+    if [ "$valid" != "true" ]; then
+        die "Invalid step number '${step}' for ${flag}. Valid steps: ${ALL_STEPS}"
+    fi
+}
+
+# ── Prerequisite Checks (H3) ─────────────────────────────────────────────────
+
+check_prerequisites() {
+    log_info "Checking prerequisites..."
+
+    # Check claude is in PATH
+    if ! command -v claude >/dev/null 2>&1; then
+        die "claude CLI not found in PATH. Install: npm install -g @anthropic-ai/claude-code"
+    fi
+    log_ok "claude CLI found: $(command -v claude)"
+
+    # Check claude version (S4)
+    check_claude_version
+
+    # Determine isolation mode and verify authentication
+    if use_bare_mode; then
+        log_ok "ANTHROPIC_API_KEY is set — using --bare mode (full isolation)"
+        log_info "Verifying claude authentication (--bare)..."
+        local auth_output
+        if ! auth_output=$(claude --bare -p "Reply with exactly: ok" --model haiku --max-turns 1 2>&1); then
+            die "claude --bare authentication failed. Verify your ANTHROPIC_API_KEY. Output: ${auth_output}"
+        fi
+    else
+        log_info "No ANTHROPIC_API_KEY — using OAuth with targeted isolation flags"
+        log_info "Verifying claude authentication..."
+        local auth_output
+        if ! auth_output=$(claude -p "Reply with exactly: ok" --model haiku --max-turns 1 2>&1); then
+            die "claude authentication failed. Run: claude then /login. Output: ${auth_output}"
+        fi
+    fi
+    log_ok "claude authentication verified"
+
+    # Verify spec directory exists
+    if [ ! -d "${SPEC_DIR}" ]; then
+        die "Specification directory not found: ${SPEC_DIR}"
+    fi
+    log_ok "Specification directory: ${SPEC_DIR}"
+}
+
+check_claude_version() {
+    local version_output
+    if version_output=$(claude --version 2>&1); then
+        # Extract version number — handle formats like "claude 1.2.3" or "1.2.3"
+        local version
+        version=$(echo "${version_output}" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1) || true
+        if [ -n "${version}" ]; then
+            if version_lt "${version}" "${MIN_CLAUDE_VERSION}"; then
+                log_warn "claude version ${version} is below recommended minimum ${MIN_CLAUDE_VERSION}"
+            else
+                log_ok "claude version: ${version}"
+            fi
+        else
+            log_warn "Could not parse claude version from: ${version_output}"
+        fi
+    else
+        log_warn "Could not determine claude version (--version failed)"
+    fi
+}
+
+# Compare two semver strings: returns 0 if $1 < $2
+version_lt() {
+    local v1="$1"
+    local v2="$2"
+
+    local v1_major v1_minor v1_patch
+    local v2_major v2_minor v2_patch
+
+    v1_major="${v1%%.*}"; v1="${v1#*.}"
+    v1_minor="${v1%%.*}"; v1_patch="${v1#*.}"
+
+    v2_major="${v2%%.*}"; v2="${v2#*.}"
+    v2_minor="${v2%%.*}"; v2_patch="${v2#*.}"
+
+    if [ "${v1_major}" -lt "${v2_major}" ] 2>/dev/null; then return 0; fi
+    if [ "${v1_major}" -gt "${v2_major}" ] 2>/dev/null; then return 1; fi
+    if [ "${v1_minor}" -lt "${v2_minor}" ] 2>/dev/null; then return 0; fi
+    if [ "${v1_minor}" -gt "${v2_minor}" ] 2>/dev/null; then return 1; fi
+    if [ "${v1_patch}" -lt "${v2_patch}" ] 2>/dev/null; then return 0; fi
+    return 1
+}
+
+# ── Step Execution ────────────────────────────────────────────────────────────
+
+# Determine which steps to run based on flags.
+# Outputs step numbers separated by spaces.
+compute_step_list() {
+    if [ -n "${ONLY_STEPS}" ]; then
+        # --steps flag: convert commas to spaces
+        echo "${ONLY_STEPS}" | tr ',' ' '
+        return
+    fi
+
+    # Default: all steps, optionally starting from --from-step
+    local started=false
+    if [ -z "${FROM_STEP}" ]; then
+        started=true
+    fi
+    local result=""
+    local s
+    for s in ${ALL_STEPS}; do
+        if [ "${s}" = "${FROM_STEP}" ]; then
+            started=true
+        fi
+        if [ "$started" = "true" ]; then
+            result="${result} ${s}"
+        fi
+    done
+    echo "${result}"
+}
+
+# BL-025-m.1: sentinel root is the per-run cache dir, NOT OUTPUT_DIR.
+# OUTPUT_DIR is reserved for install-ready artifacts only. SENTINEL_DIR is
+# initialized lazily by init_sentinel_dir() at start of main(); ensure that
+# runs before should_skip_step() / run_step() / the post-summary tally.
+SENTINEL_DIR=""
+
+# ── Concurrent-regen lockfile ─────────────────────────────────────────────────
+#
+# mkdir is atomic per POSIX (EEXIST on collision). Borrows the BL-025-j
+# oj-helper migrate-legacy pattern: lock dir under ${OUTPUT_DIR}/.regen.lock/
+# with stale-mtime recovery. A single concurrency model lives in the codebase.
+#
+# Stale-lock threshold: 30 minutes. Justification: regen step-03 alone runs
+# ~8 minutes under opus; the 30-minute window absorbs ~3x peak with margin
+# while keeping crashed-process recovery cheap. Operator override via
+# --force-unlock for sub-threshold stale locks.
+#
+# Skip path: dry-run never acquires (no real work happens, no need to gate
+# concurrent dry-runs); --force-unlock path runs before acquire and exits.
+acquire_regen_lock() {
+    local lockdir="${OUTPUT_DIR}/.regen.lock"
+
+    # First mkdir attempt — fast path (no contention).
+    if mkdir "${lockdir}" 2>/dev/null; then
+        echo "$$" > "${lockdir}/pid" 2>/dev/null || true
+        REGEN_LOCK_DIR="${lockdir}"
+        # shellcheck disable=SC2064  # intentional eager expansion of lockdir
+        # rm -rf (not rmdir) because the lockdir contains a pid file.
+        trap "rm -rf '${lockdir}' 2>/dev/null || true" EXIT INT TERM
+        return 0
+    fi
+
+    # Contention path — check stale-mtime recovery.
+    # `find -mmin +30` matches dirs modified more than 30 minutes ago;
+    # supported on both BSD (macOS) and GNU find.
+    if [ -d "${lockdir}" ] \
+       && [ -n "$(find "${lockdir}" -maxdepth 0 -mmin +30 2>/dev/null)" ]; then
+        log_warn "Stale regen lock at ${lockdir} (>30min old); reclaiming"
+        rm -rf "${lockdir}" 2>/dev/null || true
+        if mkdir "${lockdir}" 2>/dev/null; then
+            echo "$$" > "${lockdir}/pid" 2>/dev/null || true
+            REGEN_LOCK_DIR="${lockdir}"
+            # shellcheck disable=SC2064
+            # rm -rf (not rmdir) because the lockdir contains a pid file.
+            trap "rm -rf '${lockdir}' 2>/dev/null || true" EXIT INT TERM
+            return 0
+        fi
+    fi
+
+    # Live lock — fail loud with operator hint.
+    local holder_pid="unknown"
+    [ -r "${lockdir}/pid" ] && holder_pid=$(head -n1 "${lockdir}/pid" 2>/dev/null)
+    log_error "Another regen is running (lock: ${lockdir}, holder PID: ${holder_pid})"
+    log_error "If you know the holder is dead, remove the lock with:"
+    log_error "    ${0} ${OUTPUT_DIR} --force-unlock"
+    exit 1
+}
+
+init_sentinel_dir() {
+    local cache_root="${OJ_CACHE_DIR:-$HOME/.cache/juntogen}"
+    local stamp
+    stamp=$(date -u '+%Y%m%dT%H%M%SZ')
+    # BL-025-m.2: spike mode uses spike- prefix so determinism-test
+    # artifacts are distinguishable from real-run sentinel dirs.
+    local prefix="run"
+    if [ -n "${SPIKE_STEP}" ]; then
+        prefix="spike"
+    fi
+    # BL-025-m.2 P4 H3: append PID ($$) to the UTC timestamp. date -u has
+    # 1-second granularity, so two concurrent invocations within the same
+    # second collide on SENTINEL_DIR — the second mkdir -p silently reuses
+    # the first run's sentinels and either skips real work or interleaves
+    # writes. PID is cheap, deterministic per process, and collision-free
+    # for parallel invocations.
+    SENTINEL_DIR="${cache_root}/${prefix}-${stamp}-$$"
+    mkdir -p "${SENTINEL_DIR}"
+    log_info "SENTINEL_DIR: ${SENTINEL_DIR}"
+}
+
+sentinel_path() {
+    # Resolve sentinel path for a step. Caller must ensure init_sentinel_dir
+    # has run (called from main()).
+    local step="$1"
+    echo "${SENTINEL_DIR}/.step-${step}.done"
+}
+
+# Check if a step should be skipped (sentinel exists and no force).
+# BL-025-m.1: per-run cache means sentinels never exist on fresh runs; this
+# branch is reached only when OJ_CACHE_DIR is pinned and a prior run wrote
+# into the same dir. Default behavior is "every run is fresh".
+should_skip_step() {
+    local step="$1"
+    local sentinel
+    sentinel=$(sentinel_path "${step}")
+
+    if [ "${FORCE}" = "true" ]; then
+        return 1  # Don't skip
+    fi
+
+    if [ -n "${ONLY_STEPS}" ]; then
+        return 1  # --steps explicitly requested; don't skip
+    fi
+
+    if [ -n "${FROM_STEP}" ]; then
+        return 1  # --from-step explicitly requested; don't skip
+    fi
+
+    if [ -f "${sentinel}" ]; then
+        return 0  # Skip
+    fi
+
+    return 1  # Don't skip
+}
+
+# Build the prompt string for a given step, resolving placeholders (H1).
+#
+# Reads the generation prompt file and performs sed substitutions before
+# passing it to Claude, so Claude receives concrete paths rather than
+# instruction-based hints that may be ignored.
+#
+# Placeholder mappings:
+#   /path/to/juntospec/       → $SPEC_DIR/    (the spec corpus root)
+#   /path/to/juntogen/        → $JUNTOGEN_ROOT/ (juntogen repo root —
+#                               post-BL-025-f, host of generation prompts,
+#                               D64-tooling.md, validation/, platform-defaults.yaml)
+#   /path/to/oj-project/      → $OUTPUT_DIR/  (output paths; legacy /path/to/junto-project/ also accepted)
+#   {OJ_SOURCE}               → $OJ_SOURCE    (existing OpenJunto install for format reference)
+#   /path/to/openjunto/       → $OJ_SOURCE/   (alternate placeholder form; legacy /path/to/junto/ also accepted)
+#                             — {OJ_SOURCE} / /path/to/openjunto/ are left unresolved if
+#                               --oj-source not provided; Claude degrades gracefully per
+#                               step-01 spec ("If available locally, these reference files
+#                               provide format verification").
+#   {CONTRACT_PRIMITIVES}     → static markdown block listing each primitive name +
+#                               its frozen `role` one-liner from the contract
+#                               (BL-025-h). Source of truth: load-contract.py
+#                               primitive-roles. Output is deterministic — same
+#                               contract → byte-identical block.
+#   [CANONICAL: id]           → resolved absolute path to the host file at
+#                               ${SPEC_DIR}/<file> or ${juntogen_root}/<file>
+#                               (per file_repo). Source of truth:
+#                               load-contract.py canonical-ids (BL-025-h.1).
+#                               Fails closed on unknown id (exit 2).
+#   [FILE: basename]          → resolved absolute path to the spec_files entry
+#                               by basename. Source of truth:
+#                               load-contract.py spec-files (BL-025-h.1).
+#                               Fails closed on unknown basename (exit 2).
+#
+# ORDERING INVARIANT (BL-025-h.1):
+#   1. /path/to/* sed substitution        (concrete absolute paths)
+#   2. {CONTRACT_PRIMITIVES} awk insertion (multi-line block)
+#   3. [CANONICAL: id] / [FILE: basename] awk substitution
+#                                          (must run AFTER step 1+2, BEFORE step 4
+#                                           — each marker resolves to a single
+#                                           absolute path token; running before
+#                                           step 2 risks corrupting the multi-line
+#                                           contract-primitives block)
+#   4. {OJ_SOURCE} sed substitution        (graceful-degrade exception)
+build_prompt() {
+    local step="$1"
+    local prompt_filename
+    prompt_filename=$(step_prompt "${step}")
+    local prompt_file="${SCRIPT_DIR}/steps/${prompt_filename}"
+
+    if [ ! -f "${prompt_file}" ]; then
+        die "Generation prompt not found: ${prompt_file}"
+    fi
+
+    # Resolve juntogen repo root (parent of SCRIPT_DIR/claude/, since SCRIPT_DIR
+    # is juntogen/claude/). This is the post-BL-025-f host of generation prompts
+    # and validation; D64-tooling.md and platform-defaults.yaml live here.
+    local juntogen_root
+    juntogen_root="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+    # Read the prompt file and perform sed substitutions to resolve placeholders.
+    # Each substitution is chained via pipes. Paths containing special sed characters
+    # (e.g. /) are handled by using a different delimiter (@).
+    local resolved_content
+    resolved_content=$(
+        sed \
+            -e "s@/path/to/juntospec/@${SPEC_DIR}/@g" \
+            -e "s@/path/to/juntogen/@${juntogen_root}/@g" \
+            -e "s@/path/to/oj-project/@${OUTPUT_DIR}/@g" \
+            -e "s@/path/to/junto-project/@${OUTPUT_DIR}/@g" \
+            "${prompt_file}"
+    )
+
+    # {CONTRACT_PRIMITIVES} → markdown block rendered from contract.primitives
+    # (BL-025-h). Only render the block if the placeholder is present (cheap
+    # grep on the prompt content). Block format:
+    #
+    #   - **<name>** — <role one-liner>
+    #
+    # Output is byte-identical for the same contract input — load-contract.py
+    # primitive-roles preserves contract order and emits frozen role strings.
+    #
+    # Implementation note: BSD awk (macOS default) does NOT support embedded
+    # newlines in -v variable assignments — passing the markdown block via
+    # `-v block=...` aborts with `awk: newline in string`. We work around
+    # this by writing the block to a tempfile and reading it inline with
+    # awk's `getline` against the explicit filename. Same end result;
+    # portable across BSD-awk and GNU-awk.
+    if printf '%s' "${resolved_content}" | grep -q '{CONTRACT_PRIMITIVES}'; then
+        local roles_tsv
+        roles_tsv=$(python3 "${SCRIPT_DIR}/validation/scripts/lib/load-contract.py" \
+            primitive-roles "${SPEC_DIR}/platform-contract.yaml") \
+            || die "build_prompt: load-contract.py primitive-roles failed for {CONTRACT_PRIMITIVES} substitution"
+
+        local block_tmp
+        block_tmp=$(mktemp /tmp/oj-contract-primitives-block.XXXXXX)
+        printf '%s\n' "${roles_tsv}" | awk -F'\t' \
+            '{ printf "- **%s** \xe2\x80\x94 %s\n", $1, $2 }' > "${block_tmp}"
+
+        # Replace via awk: read the block file once into an array, then on
+        # each placeholder hit, emit the array and the rest of the line.
+        resolved_content=$(printf '%s' "${resolved_content}" | \
+            awk -v blockfile="${block_tmp}" '
+                BEGIN {
+                    nblock = 0
+                    while ((getline line < blockfile) > 0) {
+                        block[++nblock] = line
+                    }
+                    close(blockfile)
+                }
+                {
+                    if (index($0, "{CONTRACT_PRIMITIVES}") > 0) {
+                        idx_full = ($0 == "{CONTRACT_PRIMITIVES}")
+                        if (idx_full) {
+                            for (i = 1; i <= nblock; i++) print block[i]
+                        } else {
+                            line2 = $0
+                            gsub(/\{CONTRACT_PRIMITIVES\}/, "", line2)
+                            print line2
+                            for (i = 1; i <= nblock; i++) print block[i]
+                        }
+                        next
+                    }
+                    print $0
+                }
+            ')
+        rm -f "${block_tmp}"
+    fi
+
+    # [CANONICAL: id] and [FILE: basename] marker resolution (BL-025-h.1).
+    # MUST run AFTER {CONTRACT_PRIMITIVES} expansion (markers inside the
+    # block would otherwise be re-processed) and BEFORE {OJ_SOURCE} (which
+    # is a graceful-degrade placeholder unrelated to contract refs).
+    # Substitution is fail-loud: any [CANONICAL: ...] or [FILE: ...] marker
+    # whose contents do not resolve via the contract aborts the build with
+    # a structured stderr message naming the unknown id/basename.
+    # Idempotency: same contract input -> byte-identical output (awk
+    # iterates in input order; tables are sorted-deterministic per the
+    # python loader; resolved values are absolute paths).
+    if printf '%s' "${resolved_content}" | grep -qE '\[(CANONICAL|FILE):[[:space:]]*[A-Za-z0-9._-]+\]'; then
+        local cids_tsv sfiles_tsv
+        cids_tsv=$(python3 "${SCRIPT_DIR}/validation/scripts/lib/load-contract.py" \
+            canonical-ids "${SPEC_DIR}/platform-contract.yaml") \
+            || die "build_prompt: load-contract.py canonical-ids failed"
+        sfiles_tsv=$(python3 "${SCRIPT_DIR}/validation/scripts/lib/load-contract.py" \
+            spec-files "${SPEC_DIR}/platform-contract.yaml") \
+            || die "build_prompt: load-contract.py spec-files failed"
+        # Build TSV tables of marker -> absolute path resolution.
+        # canonical_ids: id <TAB> resolved-path-of-host-file
+        # spec_files:    basename <TAB> resolved-path
+        local cmap_tmp fmap_tmp
+        cmap_tmp=$(mktemp /tmp/oj-cmap.XXXXXX)
+        fmap_tmp=$(mktemp /tmp/oj-fmap.XXXXXX)
+        # canonical-ids TSV columns: id<TAB>file<TAB>section<TAB>file_repo
+        printf '%s\n' "${cids_tsv}" | awk -F'\t' \
+            -v spec="${SPEC_DIR}" -v jg="${juntogen_root}" \
+            '{
+                if ($1 == "") next
+                repo = $4
+                if (repo == "" || repo == "juntospec") {
+                    base = spec
+                } else if (repo == "juntogen") {
+                    base = jg
+                } else {
+                    # load-contract.py enum guard already rejected unknowns;
+                    # belt-and-braces: skip + warn rather than crash here.
+                    next
+                }
+                printf "%s\t%s/%s\n", $1, base, $2
+            }' > "${cmap_tmp}"
+        # spec-files TSV columns: file<TAB>file_repo<TAB>path
+        printf '%s\n' "${sfiles_tsv}" | awk -F'\t' \
+            -v spec="${SPEC_DIR}" -v jg="${juntogen_root}" \
+            '{
+                if ($1 == "") next
+                repo = $2
+                if (repo == "" || repo == "juntospec") {
+                    base = spec
+                } else if (repo == "juntogen") {
+                    base = jg
+                } else {
+                    next
+                }
+                printf "%s\t%s/%s\n", $1, base, $3
+            }' > "${fmap_tmp}"
+        local marker_err_tmp
+        marker_err_tmp=$(mktemp /tmp/oj-marker-err.XXXXXX)
+        # Single awk pass: load both TSV tables into associative arrays,
+        # walk each line, locate all [CANONICAL: id] and [FILE: basename]
+        # tokens, replace in-place, and emit unknown-marker diagnostics
+        # to a side-channel tempfile (awk -> stderr would interleave with
+        # awk's own output; the tempfile keeps streams clean).
+        # BSD-awk-portable: no gsub backreferences; manual index/substr.
+        local marker_resolved
+        marker_resolved=$(printf '%s' "${resolved_content}" | \
+            awk -v cmap="${cmap_tmp}" -v fmap="${fmap_tmp}" \
+                -v errfile="${marker_err_tmp}" '
+                BEGIN {
+                    while ((getline line < cmap) > 0) {
+                        idx = index(line, "\t")
+                        if (idx == 0) continue
+                        key = substr(line, 1, idx - 1)
+                        val = substr(line, idx + 1)
+                        cidx[key] = val
+                    }
+                    close(cmap)
+                    while ((getline line < fmap) > 0) {
+                        idx = index(line, "\t")
+                        if (idx == 0) continue
+                        key = substr(line, 1, idx - 1)
+                        val = substr(line, idx + 1)
+                        fidx[key] = val
+                    }
+                    close(fmap)
+                }
+                {
+                    out = ""
+                    rest = $0
+                    while (1) {
+                        # Find earliest [CANONICAL: ...] or [FILE: ...] occurrence.
+                        c_pos = index(rest, "[CANONICAL:")
+                        f_pos = index(rest, "[FILE:")
+                        # Pick the earliest non-zero hit.
+                        if (c_pos == 0 && f_pos == 0) {
+                            out = out rest
+                            break
+                        }
+                        if (c_pos == 0) {
+                            pick_pos = f_pos; pick_kind = "FILE"
+                        } else if (f_pos == 0) {
+                            pick_pos = c_pos; pick_kind = "CANONICAL"
+                        } else if (c_pos < f_pos) {
+                            pick_pos = c_pos; pick_kind = "CANONICAL"
+                        } else {
+                            pick_pos = f_pos; pick_kind = "FILE"
+                        }
+                        # Find the matching closing bracket (must be on the
+                        # same line; markers do not span newlines).
+                        close_off = index(substr(rest, pick_pos), "]")
+                        if (close_off == 0) {
+                            # No close bracket on this line — emit verbatim
+                            # and stop (treat as not-a-marker).
+                            out = out rest
+                            break
+                        }
+                        close_pos = pick_pos + close_off - 1
+                        token = substr(rest, pick_pos, close_pos - pick_pos + 1)
+                        # token = "[CANONICAL: id]" or "[FILE: basename]"
+                        # Strip the leading "[KIND:" and trailing "]" + trim.
+                        prefix_len = (pick_kind == "CANONICAL") ? 11 : 6
+                        inner = substr(token, prefix_len + 1, length(token) - prefix_len - 1)
+                        # Trim leading whitespace.
+                        sub(/^[[:space:]]+/, "", inner)
+                        sub(/[[:space:]]+$/, "", inner)
+                        # Skip meta-id documentation literal: [CANONICAL: id]
+                        # (precedent: validate-dry-run.sh:179).
+                        if (pick_kind == "CANONICAL" && inner == "id") {
+                            out = out substr(rest, 1, close_pos)
+                            rest = substr(rest, close_pos + 1)
+                            continue
+                        }
+                        # Validate inner against the marker character class
+                        # used by the validators ([A-Za-z0-9._-]). Anything
+                        # else: emit verbatim (not a real marker form).
+                        if (inner !~ /^[A-Za-z0-9._-]+$/) {
+                            out = out substr(rest, 1, close_pos)
+                            rest = substr(rest, close_pos + 1)
+                            continue
+                        }
+                        # Lookup.
+                        if (pick_kind == "CANONICAL") {
+                            if (inner in cidx) {
+                                replacement = cidx[inner]
+                            } else {
+                                printf "[CANONICAL: %s]\n", inner > errfile
+                                # Best-effort emit to keep output stable
+                                # for diff debugging; the caller hard-fails
+                                # below on errfile non-empty.
+                                replacement = token
+                            }
+                        } else {
+                            if (inner in fidx) {
+                                replacement = fidx[inner]
+                            } else {
+                                printf "[FILE: %s]\n", inner > errfile
+                                replacement = token
+                            }
+                        }
+                        out = out substr(rest, 1, pick_pos - 1) replacement
+                        rest = substr(rest, close_pos + 1)
+                    }
+                    print out
+                }
+            ')
+        if [ -s "${marker_err_tmp}" ]; then
+            # Write directly to stderr — build_prompt is called with stdout
+            # redirected to a tempfile, so log_error (which writes to stdout)
+            # would be swallowed.
+            {
+                echo -e "${RED}[ERROR]${NC} build_prompt: unresolved marker(s) for step ${step} — failing closed:"
+                while IFS= read -r m; do
+                    echo -e "${RED}[ERROR]${NC}   ${m}"
+                done < "${marker_err_tmp}"
+                echo -e "${RED}[ERROR]${NC} build_prompt: marker resolution failed; fix the contract or the step prompt"
+            } >&2
+            rm -f "${cmap_tmp}" "${fmap_tmp}" "${marker_err_tmp}"
+            exit 2
+        fi
+        rm -f "${cmap_tmp}" "${fmap_tmp}" "${marker_err_tmp}"
+        resolved_content="${marker_resolved}"
+    fi
+
+    # {OJ_SOURCE} and /path/to/openjunto/ reference an existing OpenJunto
+    # installation for format verification. Only substitute if --oj-source was
+    # provided; otherwise leave unresolved so Claude degrades gracefully.
+    # Legacy forms ({JUNTO_SOURCE}, /path/to/junto/) are also resolved for
+    # one-release backward compatibility with older specs.
+    if [ -n "${OJ_SOURCE}" ]; then
+        resolved_content=$(echo "${resolved_content}" | \
+            sed -e "s@{OJ_SOURCE}@${OJ_SOURCE}@g" \
+                -e "s@{JUNTO_SOURCE}@${OJ_SOURCE}@g" \
+                -e "s@/path/to/openjunto/@${OJ_SOURCE}/@g" \
+                -e "s@/path/to/junto/@${OJ_SOURCE}/@g")
+    fi
+
+    # Step-00 specific: append mode hint and platform-defaults path
+    local step00_suffix=""
+    if [ "${step}" = "00" ]; then
+        if [ -f "${OUTPUT_DIR}/platform-declaration.yaml" ]; then
+            step00_suffix=" A platform-declaration.yaml file exists in the working directory — use declaration mode."
+        fi
+        step00_suffix="${step00_suffix} The platform-defaults.yaml file is at ${SCRIPT_DIR}/platform-defaults.yaml."
+    fi
+
+    # Compose final prompt: brief instruction preamble + resolved prompt content
+    local preamble="Execute the following generation prompt. Write all output files to the current working directory.${step00_suffix}"
+
+    printf '%s\n\n%s' "${preamble}" "${resolved_content}"
+}
+
+# Per-step timeout budget. Step-03 is the LLM-heavy profile-generation
+# leg and runs ~8min under opus; budget 1500s (25min) accommodates the
+# tail. Every other step's budget is 900s (15min) — generous enough to
+# absorb network/auth retries without masking a stuck child.
+step_timeout_secs() {
+    case "$1" in
+        03) echo 1500 ;;
+        *)  echo 900  ;;
+    esac
+}
+
+# Execute a single step
+run_step() {
+    local step="$1"
+    local max_turns desc log_dir log_file sentinel timeout_secs
+    max_turns=$(step_max_turns "${step}")
+    desc=$(step_desc "${step}")
+    timeout_secs=$(step_timeout_secs "${step}")
+    # BL-025-m.1: logs also relocate to SENTINEL_DIR so OUTPUT_DIR stays
+    # install-ready. Run-scoped logs are co-located with the run-scoped
+    # sentinels under ${SENTINEL_DIR}/generation-logs/.
+    log_dir="${SENTINEL_DIR}/generation-logs"
+    log_file="${log_dir}/step-${step}.log"
+    sentinel=$(sentinel_path "${step}")
+
+    # Partial atomic-write mitigation (TENSION-B): clean any leftover
+    # ${OUTPUT_DIR}/.step-NN.partial/ from a prior killed run before any
+    # step work begins. No-op when absent.
+    rm -rf "${OUTPUT_DIR}/.step-${step}.partial" 2>/dev/null || true
+
+    echo ""
+    log_step "Step ${step}: ${desc}"
+    log_info "  Max turns: ${max_turns} | Model: ${MODEL} | Timeout: ${timeout_secs}s"
+
+    # Build the prompt and write to a temp file to avoid ARG_MAX limits.
+    # Generation prompts can be large (full spec references after substitution).
+    local prompt_tmp
+    prompt_tmp=$(mktemp /tmp/junto-generate-step-${step}.XXXXXX)
+
+    build_prompt "${step}" > "${prompt_tmp}"
+
+    # BL-025-h: persist a stable copy of every built prompt under
+    # ${OUTPUT_DIR}/prompts-built/step-NN.prompt so validate-dry-run.sh
+    # can inspect placeholders + canonical-id references after the dry
+    # run. This is cheap (~10s of KB per step) and makes --dry-run a
+    # useful integrity check rather than a no-op.
+    local prompts_built_dir="${OUTPUT_DIR}/prompts-built"
+    mkdir -p "${prompts_built_dir}"
+    cp "${prompt_tmp}" "${prompts_built_dir}/step-${step}.prompt"
+
+    # Dry run mode (H7)
+    if [ "${DRY_RUN}" = "true" ]; then
+        log_dry "Would execute:"
+        if use_bare_mode; then
+            echo -e "  ${CYAN}claude --bare \\\\${NC}"
+        else
+            echo -e "  ${CYAN}claude \\\\${NC}"
+        fi
+        echo -e "  ${CYAN}  -p \"\$(cat ${prompt_tmp})\" \\\\${NC}"
+        echo -e "  ${CYAN}  --model \"${MODEL}\" \\\\${NC}"
+        echo -e "  ${CYAN}  --dangerously-skip-permissions \\\\${NC}"
+        echo -e "  ${CYAN}  --max-turns ${max_turns}${NC}"
+        if ! use_bare_mode; then
+            echo -e "  ${CYAN}  --append-system-prompt \"GENERATION MODE...\" \\\\${NC}"
+            echo -e "  ${CYAN}  --settings '{\"disableAllHooks\":true}' \\\\${NC}"
+            echo -e "  ${CYAN}  --disable-slash-commands${NC}"
+        fi
+        echo -e "  ${CYAN}  # cwd: ${OUTPUT_DIR}${NC}"
+        echo -e "  ${CYAN}  # log: ${log_file}${NC}"
+        echo -e "  ${CYAN}  # prompt preview: $(head -c 120 "${prompt_tmp}")...${NC}"
+        rm -f "${prompt_tmp}"
+        return 0
+    fi
+
+    # Ensure log directory exists (S3)
+    mkdir -p "${log_dir}"
+
+    # Execute Claude CLI
+    log_info "  Executing... (log: generation-logs/step-${step}.log)"
+    local start_time
+    start_time=$(date +%s)
+
+    local exit_code=0
+    local claude_pid watchdog_pid="" heartbeat_pid=""
+
+    # Background the claude CLI in a subshell so we can supervise it with
+    # a watchdog. Capturing $! gives us the subshell PID; killing it
+    # propagates SIGTERM to the inner claude invocation. The subshell
+    # writes stdout/stderr to ${log_file} so the user gets diagnostics
+    # on either success or timeout.
+    if use_bare_mode; then
+        # Full isolation — ANTHROPIC_API_KEY handles auth
+        (
+            cd "${OUTPUT_DIR}" && \
+            claude --bare \
+                -p "$(cat "${prompt_tmp}")" \
+                --model "${MODEL}" \
+                --dangerously-skip-permissions \
+                --max-turns "${max_turns}"
+        ) > "${log_file}" 2>&1 &
+        claude_pid=$!
+    else
+        # Targeted isolation — OAuth credentials preserved, CLAUDE.md neutralized
+        (
+            cd "${OUTPUT_DIR}" && \
+            claude \
+                -p "$(cat "${prompt_tmp}")" \
+                --model "${MODEL}" \
+                --dangerously-skip-permissions \
+                --max-turns "${max_turns}" \
+                --append-system-prompt "${GENERATION_MODE_PROMPT}" \
+                --settings '{"disableAllHooks":true}' \
+                --disable-slash-commands
+        ) > "${log_file}" 2>&1 &
+        claude_pid=$!
+    fi
+
+    # Watchdog: send SIGTERM after timeout_secs, escalate to SIGKILL 10s
+    # later if the process still lives. Pure-bash — gtimeout and timeout
+    # are both absent on macOS dev hosts (no GNU coreutils by default).
+    (
+        sleep "${timeout_secs}"
+        if kill -0 "${claude_pid}" 2>/dev/null; then
+            echo "[step ${step}] timeout exceeded ${timeout_secs}s; sending SIGTERM" >&2
+            kill -TERM "${claude_pid}" 2>/dev/null
+            sleep 10
+            if kill -0 "${claude_pid}" 2>/dev/null; then
+                echo "[step ${step}] still alive after 10s; sending SIGKILL" >&2
+                kill -KILL "${claude_pid}" 2>/dev/null
+            fi
+        fi
+    ) &
+    watchdog_pid=$!
+
+    # Heartbeat: emit a still-running line every 60s to stderr so an
+    # operator monitoring a long step-03 run knows the pipeline hasn't
+    # hung. Suppressed by OJ_QUIET=1 (use in CI).
+    if [ -z "${OJ_QUIET:-}" ]; then
+        (
+            hb_elapsed=0
+            while sleep 60; do
+                hb_elapsed=$((hb_elapsed + 60))
+                kill -0 "${claude_pid}" 2>/dev/null || break
+                echo "[step ${step}] heartbeat: ${hb_elapsed}s elapsed (budget ${timeout_secs}s)" >&2
+            done
+        ) &
+        heartbeat_pid=$!
+    fi
+
+    # Wait for the claude subshell. `wait` with a specific PID returns
+    # the subshell's exit code, which is the claude CLI's exit code.
+    wait "${claude_pid}" 2>/dev/null || exit_code=$?
+
+    # Stop the supervisors. Kill silently — they may have already exited
+    # naturally (heartbeat detected dead claude_pid via kill -0; watchdog
+    # finished its sleep without firing if the step completed fast).
+    if [ -n "${watchdog_pid}" ]; then
+        kill "${watchdog_pid}" 2>/dev/null || true
+        wait "${watchdog_pid}" 2>/dev/null || true
+    fi
+    if [ -n "${heartbeat_pid}" ]; then
+        kill "${heartbeat_pid}" 2>/dev/null || true
+        wait "${heartbeat_pid}" 2>/dev/null || true
+    fi
+
+    rm -f "${prompt_tmp}"
+
+    local end_time elapsed
+    end_time=$(date +%s)
+    elapsed=$((end_time - start_time))
+
+    if [ ${exit_code} -ne 0 ]; then
+        log_error "  Step ${step} failed (exit code ${exit_code}, ${elapsed}s elapsed)"
+        log_error "  See log: ${log_file}"
+        # Show last 10 lines of log for quick diagnosis
+        log_error "  Last 10 lines of log:"
+        tail -10 "${log_file}" 2>/dev/null | while IFS= read -r line; do
+            echo -e "    ${RED}${line}${NC}"
+        done
+        return 2
+    fi
+
+    log_info "  Completed in ${elapsed}s"
+
+    # BL-025-m.2: emit DATA-class static artifacts before verification.
+    # The static-emit dispatch is a no-op for steps without DATA-class
+    # siblings; only step-07 currently fires (plugin.json + hooks.json +
+    # bin/lib/contracts.sh). Sequencing AFTER claude exit 0 but BEFORE
+    # verify_step ensures the verifier sees both LLM and static output
+    # as a single coherent step result.
+    log_info "  Emitting static artifacts (if any)..."
+    if ! static_artifacts_emit "${step}" "${OUTPUT_DIR}"; then
+        log_error "  Step ${step} static-artifact emit failed"
+        log_error "  LLM output produced but DATA-class manifests could not be written"
+        log_error "  See log: ${log_file}"
+        return 3
+    fi
+
+    # Verify outputs (H2)
+    log_info "  Verifying outputs..."
+    if ! verify_step "${step}" "${OUTPUT_DIR}"; then
+        log_error "  Step ${step} output verification failed"
+        log_error "  Claude exited 0 but expected outputs are missing or empty"
+        log_error "  See log: ${log_file}"
+        return 3
+    fi
+
+    log_ok "  Step ${step} verified"
+
+    # Write sentinel (H6)
+    date -u '+%Y-%m-%dT%H:%M:%SZ' > "${sentinel}"
+    log_ok "  Sentinel written: .step-${step}.done"
+
+    return 0
+}
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+
+main() {
+    parse_args "$@"
+
+    # ── --force-unlock path ───────────────────────────────────────────────
+    # Pure operator override: remove ${OUTPUT_DIR}/.regen.lock/ and exit.
+    # Runs BEFORE any other initialization so it's safe even when the lock
+    # dir came from a partial crashed run with a half-initialized output
+    # tree. parse_args already enforced mutex against every other mode.
+    if [ "${FORCE_UNLOCK}" = "true" ]; then
+        [ -n "${OUTPUT_DIR}" ] || die "OUTPUT_DIR is required for --force-unlock"
+        local lockdir="${OUTPUT_DIR}/.regen.lock"
+        if [ ! -d "${lockdir}" ]; then
+            log_info "No regen lock at ${lockdir}; nothing to do."
+            exit 0
+        fi
+        rm -rf "${lockdir}" 2>/dev/null \
+            && log_info "Lock removed: ${lockdir}" \
+            || die "Failed to remove ${lockdir} (check permissions)"
+        exit 0
+    fi
+
+    # ── BL-025-m.1 regen guard (soft) ─────────────────────────────────────
+    # oj-claude/src/ and oj-claude/Makefile were removed when the Makefile
+    # install path was retired. The generation pipeline now targets the
+    # plugin-tree-direct shape (BL-025-m.1 rewired verification functions),
+    # but the step-prompt rewrites (BL-025-m.2) and the actual end-to-end
+    # regen run with layered convergence gate (BL-025-m.3) are still
+    # pending. Real runs would either emit wrong-shape output or hard-fail
+    # mid-step; either is worse than refusing to run.
+    #
+    # SOFT guard: --dry-run is allowed through so the DATA-determinism
+    # spike (BL-025-m.1 Deliverable 9) and step-prompt audits can run.
+    # BL-025-m.2: --spike STEP is also allowed through — see the spike
+    # branch below for the determinism-test-only contract.
+    # Real runs still blocked until BL-025-m.3 lands.
+    if [ -n "${SPIKE_STEP}" ]; then
+        log_warn "BL-025-m.2 spike mode: running step-${SPIKE_STEP} against sandbox key; not a real regen"
+        # Spike mode pins ONLY_STEPS so compute_step_list returns just the
+        # spike step. parse_args() already enforced that --from-step /
+        # --steps / --force are not set (mutex), so the pin is the only
+        # mutation needed here.
+        ONLY_STEPS="${SPIKE_STEP}"
+    elif [ "${DRY_RUN}" = "true" ]; then
+        log_warn "BL-025-m.1 soft guard: --dry-run bypass active (real runs blocked until BL-025-m.3)"
+    fi
+
+    # BL-025-m.1: initialize sentinel/log root only after guard passes.
+    # Per-run cache dir under OJ_CACHE_DIR (default ~/.cache/juntogen/
+    # run-<timestamp>/). OUTPUT_DIR is reserved for install-ready artifacts
+    # only — sentinels never pollute it.
+    # BL-025-m.2: spike mode overrides the run- prefix with spike- so the
+    # per-cycle cache distinguishes determinism-test artifacts from real
+    # runs.
+    init_sentinel_dir
+
+    resolve_spec_dir
+
+    # VERSION race guard (local-only). Refuses to run if juntospec/VERSION
+    # has uncommitted changes — staged or unstaged — so the regen tree's
+    # embedded version string is reproducible from a single SPEC_DIR sha.
+    # Silently passes when SPEC_DIR is not a git checkout (rare; e.g.,
+    # vendored tarball). Remote-pulled-clean check deferred to a future
+    # cycle (cohort scope).
+    if [ -d "${SPEC_DIR}/.git" ] && command -v git >/dev/null 2>&1; then
+        if ! git -C "${SPEC_DIR}" diff --quiet HEAD -- VERSION 2>/dev/null; then
+            log_error "juntospec/VERSION has uncommitted changes."
+            log_error "Commit (or stash) the change before regen so the embedded"
+            log_error "version string is reproducible from a single SPEC_DIR sha."
+            exit 2
+        fi
+    fi
+
+    load_contract
+
+    echo ""
+    echo -e "${BOLD}OpenJunto generation pipeline${NC}"
+    echo -e "  Specs:  ${SPEC_DIR}"
+    echo -e "  Output: ${OUTPUT_DIR}"
+    echo -e "  Model:  ${MODEL}"
+    if use_bare_mode; then
+        echo -e "  Auth:   ${GREEN}API key (--bare isolation)${NC}"
+    else
+        echo -e "  Auth:   ${YELLOW}OAuth (targeted isolation)${NC}"
+    fi
+    if [ "${DRY_RUN}" = "true" ]; then
+        echo -e "  Mode:   ${CYAN}DRY RUN${NC}"
+    fi
+    if [ "${FORCE}" = "true" ]; then
+        echo -e "  Force:  ${YELLOW}yes (ignoring sentinels)${NC}"
+    fi
+    echo ""
+
+    # Create OUTPUT_DIR if it doesn't exist (H4)
+    mkdir -p "${OUTPUT_DIR}"
+
+    # Concurrent-regen lock — skip in dry-run mode (no real work, no need
+    # to gate concurrent dry-runs).
+    if [ "${DRY_RUN}" != "true" ]; then
+        acquire_regen_lock
+    fi
+
+    # Prerequisite checks (H3) — skip in dry-run mode
+    if [ "${DRY_RUN}" != "true" ]; then
+        check_prerequisites
+    fi
+
+    # ── Pre-step-00 vocabulary gate (BL-025-e) ────────────────────────────
+    # Before any LLM invocation, fail-close on vocabulary contract violations:
+    #  1. Run the negative+positive fixture harness (proves the audit itself
+    #     still detects each failure mode + accepts each positive form).
+    #  2. Run the audit against the real spec corpus (proves the corpus is
+    #     clean before generation reads it).
+    # Either failure aborts the pipeline. Skipped in dry-run mode (where no
+    # LLM-step prerequisites are checked).
+    # BL-025-m.2: spike mode bypasses the pre-step-00 vocabulary gate.
+    # Spike is DATA-only — the static-emit helper writes deterministic
+    # files without consulting any LLM-driven prompt. Running the audit
+    # chain would slow the spike and is functionally moot for DATA emit.
+    # Real runs (DRY_RUN=false, SPIKE_STEP="") still run the full gate.
+    if [ "${DRY_RUN}" != "true" ] && [ -z "${SPIKE_STEP}" ]; then
+        # BL-025-f: validation/ now lives next to the generator in juntogen
+        # (the historical pre-BL-025-f layout was under juntospec). The
+        # fixture harness is juntogen-internal; the corpus audit consumes
+        # ${SPEC_DIR} as input.
+        # BL-025-g: contract<->corpus bijection check runs FIRST in the
+        # pre-step-00 chain. Vocabulary audit reads contract.banned_terms
+        # and contract.keep_list — if contract integrity is broken, vocab
+        # gate operates on unverified data. Order: contract-validate-test
+        # (harness) -> contract-validate (runtime) -> existing vocab gate.
+        local contract_test="${SCRIPT_DIR}/validation/scripts/contract-validate-test.sh"
+        local contract_validate="${SCRIPT_DIR}/validation/scripts/contract-validate.sh"
+        if [ ! -x "${contract_test}" ] || [ ! -x "${contract_validate}" ]; then
+            die "Pre-step-00 contract-validate scripts missing or not executable at ${SCRIPT_DIR}/validation/scripts/ (expected contract-validate.sh + contract-validate-test.sh). Refusing to bypass gate — fail-closed."
+        fi
+        log_info "Pre-step-00: contract-validate-test (fixture harness)"
+        if ! "${contract_test}"; then
+            die "Pre-step-00 contract-validate fixture harness failed; aborting generation."
+        fi
+        log_info "Pre-step-00: contract-validate (real corpus, contract<->corpus bijection)"
+        if ! "${contract_validate}" --spec-dir "${SPEC_DIR}"; then
+            die "Pre-step-00 contract-validate failed against real corpus; aborting generation."
+        fi
+        local vocab_test="${SCRIPT_DIR}/validation/scripts/vocabulary-audit-test.sh"
+        local vocab_audit="${SCRIPT_DIR}/validation/scripts/vocabulary-audit.sh"
+        if [ ! -x "${vocab_test}" ] || [ ! -x "${vocab_audit}" ]; then
+            die "Pre-step-00 vocabulary gate scripts missing or not executable at ${SCRIPT_DIR}/validation/scripts/ (expected vocabulary-audit.sh + vocabulary-audit-test.sh). Refusing to bypass gate — fail-closed."
+        fi
+        log_info "Pre-step-00: vocabulary-audit-test (fixture harness)"
+        if ! OJ_SPEC_DIR="${SPEC_DIR}" "${vocab_test}"; then
+            die "Pre-step-00 vocabulary fixture harness failed; aborting generation."
+        fi
+        log_info "Pre-step-00: vocabulary-audit (real corpus)"
+        if ! "${vocab_audit}" "${SPEC_DIR}"; then
+            die "Pre-step-00 vocabulary audit failed against real corpus; aborting generation."
+        fi
+        # BL-025-h: step-prompt vocabulary audit. Fails closed if any
+        # banned spec-prose vocabulary is in the step-prompt middle layer
+        # outside its dedicated keep_list (.steps-keep-list.yaml).
+        # Harness runs first (mirrors contract-validate / vocabulary-audit
+        # pairs) — locks the audit script's success path and detection
+        # branches against regressions before it runs on the live corpus.
+        local steps_audit_test="${SCRIPT_DIR}/validation/scripts/step-prompt-vocabulary-audit-test.sh"
+        local steps_audit="${SCRIPT_DIR}/validation/scripts/step-prompt-vocabulary-audit.sh"
+        if [ ! -x "${steps_audit_test}" ] || [ ! -x "${steps_audit}" ]; then
+            die "Pre-step-00 step-prompt vocabulary gate scripts missing or not executable at ${SCRIPT_DIR}/validation/scripts/ (expected step-prompt-vocabulary-audit.sh + step-prompt-vocabulary-audit-test.sh). Refusing to bypass gate — fail-closed."
+        fi
+        log_info "Pre-step-00: step-prompt-vocabulary-audit-test (fixture harness)"
+        if ! OJ_SPEC_DIR="${SPEC_DIR}" "${steps_audit_test}"; then
+            die "Pre-step-00 step-prompt vocabulary fixture harness failed; aborting generation."
+        fi
+        log_info "Pre-step-00: step-prompt-vocabulary-audit (juntogen step prompts)"
+        if ! OJ_SPEC_DIR="${SPEC_DIR}" "${steps_audit}" "${SCRIPT_DIR}/steps"; then
+            die "Pre-step-00 step-prompt vocabulary audit failed; aborting generation."
+        fi
+        log_ok "Pre-step-00 vocabulary gate clean."
+    fi
+
+    # Copy platform declaration if specified (S2, T1)
+    if [ -n "${PLATFORM_DECL}" ]; then
+        log_info "Copying platform declaration to ${OUTPUT_DIR}/platform-declaration.yaml"
+        cp "${PLATFORM_DECL}" "${OUTPUT_DIR}/platform-declaration.yaml"
+        log_ok "Platform declaration installed (enables CI-reproducible declaration mode)"
+    fi
+
+    # Compute step list
+    local steps_str
+    steps_str=$(compute_step_list)
+
+    if [ -z "${steps_str}" ]; then
+        die "No steps to run"
+    fi
+
+    log_info "Steps to run:${steps_str}"
+
+    # Execute steps (H8: sequential)
+    local total=0
+    local s
+    for s in ${steps_str}; do
+        total=$((total + 1))
+    done
+
+    local current=0
+    local failed_step=""
+
+    for step in ${steps_str}; do
+        current=$((current + 1))
+        local desc
+        desc=$(step_desc "${step}")
+
+        # Check sentinel (H6)
+        if should_skip_step "${step}"; then
+            log_step "Step ${step}: ${desc} — $(echo -e "${GREEN}")skipped (sentinel exists)$(echo -e "${NC}")"
+            continue
+        fi
+
+        echo -e "${BOLD}--- [${current}/${total}] -----------------------------------------------------------${NC}"
+
+        if ! run_step "${step}"; then
+            failed_step="${step}"
+            break
+        fi
+    done
+
+    # Summary
+    echo ""
+    echo -e "${BOLD}--- Summary ----------------------------------------------------------------${NC}"
+
+    if [ -n "${failed_step}" ]; then
+        local failed_desc
+        failed_desc=$(step_desc "${failed_step}")
+        log_error "Pipeline failed at step ${failed_step}: ${failed_desc}"
+        log_info "To resume: $0 ${OUTPUT_DIR} --from-step ${failed_step}"
+        exit 2
+    fi
+
+    if [ "${DRY_RUN}" = "true" ]; then
+        log_ok "Dry run complete — no commands were executed"
+        # BL-025-h: chain the dry-run formal post-condition validator.
+        local dry_validator="${SCRIPT_DIR}/validation/scripts/validate-dry-run.sh"
+        if [ -x "${dry_validator}" ]; then
+            local oj_source_provided=1
+            if [ -z "${OJ_SOURCE}" ]; then
+                oj_source_provided=0
+            fi
+            log_info "Chaining: validate-dry-run.sh"
+            if ! OJ_SPEC_DIR="${SPEC_DIR}" "${dry_validator}" \
+                    --prompt-dir "${OUTPUT_DIR}/prompts-built" \
+                    --spec-dir "${SPEC_DIR}" \
+                    --steps-dir "${SCRIPT_DIR}/steps" \
+                    --oj-source-provided "${oj_source_provided}"; then
+                die "validate-dry-run.sh failed; dry-run post-conditions not met."
+            fi
+            log_ok "Dry-run post-conditions clean."
+        else
+            log_warn "validate-dry-run.sh not found at ${dry_validator}; skipping post-condition checks."
+        fi
+    else
+        log_ok "All steps completed successfully"
+        log_info "Generated artifacts: ${OUTPUT_DIR}"
+
+        # Show sentinel status (BL-025-m.1: sentinels under SENTINEL_DIR).
+        # ALL_STEPS = 11 entries (step-08 retired but the numeric gap remains
+        # so older logs/runs stay comparable). Tally length follows ALL_STEPS.
+        local completed=0
+        local expected=0
+        for s in ${ALL_STEPS}; do
+            expected=$((expected + 1))
+            if [ -f "${SENTINEL_DIR}/.step-${s}.done" ]; then
+                completed=$((completed + 1))
+            fi
+        done
+        log_info "Completed steps: ${completed}/${expected} (sentinels under ${SENTINEL_DIR})"
+
+        # BL-025-m.2: spike-mode cleanup hint. The spike sentinel dir
+        # persists until the operator removes it; print the rm command so
+        # it's easy to copy from the run output.
+        if [ -n "${SPIKE_STEP}" ]; then
+            echo ""
+            log_info "Spike artifacts under ${SENTINEL_DIR}/; rm when done."
+        fi
+    fi
+
+    echo ""
+}
+
+main "$@"

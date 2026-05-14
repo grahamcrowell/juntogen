@@ -1,0 +1,6 @@
+INPUT: "Check if the API is responding"
+EXPECTED:
+  tier: Simple
+  stakeholders: [Product, Tech]
+  delegation: inline
+RATIONALE: "Inline perspective rotation with PERSPECTIVE blocks"

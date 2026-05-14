@@ -1,0 +1,6 @@
+INPUT: "Update the security section in our onboarding documentation"
+EXPECTED:
+  tier: Simple
+  stakeholders: [Product, Tech, Documentation]
+  delegation: inline
+RATIONALE: "Documentation change only - 'security' keyword does NOT automatically trigger Security stakeholder for doc-only changes"

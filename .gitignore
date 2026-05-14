@@ -1,0 +1,10 @@
+.DS_Store
+*.swp
+__pycache__/
+*.pyc
+.venv/
+node_modules/
+# BL-025-m.1: per-run sentinel/log cache. Generator writes here when
+# OJ_CACHE_DIR is unset and the cache resolves under the juntogen tree
+# (e.g., when a user passes --output to a juntogen-relative path).
+.cache/

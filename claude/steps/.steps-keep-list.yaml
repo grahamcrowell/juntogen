@@ -1,0 +1,223 @@
+# .steps-keep-list.yaml — BL-025-h step-prompt vocabulary audit exemptions.
+#
+# PURPOSE: Enumerate the [EXTERNAL] platform-fact occurrences inside the
+#          juntogen step-prompt corpus (juntogen/claude/steps/*.md) that
+#          legitimately reference Claude-platform identifiers
+#          (Task tool / TeamCreate / TeamDelete / SendMessage /
+#          SubagentStart). Every occurrence outside this list is flagged
+#          by step-prompt-vocabulary-audit.sh.
+#
+# SCOPE:   juntogen/claude/steps/ ONLY. Distinct from the spec-corpus
+#          keep_list in juntospec/platform-contract.yaml. The two regimes
+#          are intentionally separate:
+#            - juntospec/platform-contract.yaml.keep_list governs the
+#              core spec corpus (D/F/M*.md + README + MANIFEST).
+#            - this file governs the step-prompt middle layer in juntogen.
+#
+# RATIONALE: Step prompts are the bridge between abstract spec corpus and
+#            generated platform artifacts. Within them, references to
+#            Claude tool/hook identifiers are appropriate where a step
+#            prompt is documenting the snapshot schema, the hook contract,
+#            or a settings.json invariant. The audit holds spec-prose
+#            (Triage scoring, Design intent, Synthesis instructions) to
+#            the abstract primitive vocabulary.
+#
+# Entry shape:
+#   - file: "step-09-settings-and-hooks.md"
+#     line: 52
+#     term: "TeamCreate"
+#     match_kind: "literal"
+#     reason: "platform-fact-env-var-doc"
+#     note: "Free-form rationale"
+#
+# Permitted reasons (step-prompt audit enum):
+#   capability-schema           — step-00 platform.tools / hooks YAML rows
+#   capability-schema-prose     — step-00 didactic notes about schema
+#   inject-profile-binding      — step-07 SubagentStart hook contract refs
+#   installer-hook-prose        — RETIRED with step-08 (BL-025-m.1).
+#                                 Reason name retained for one-cycle audit
+#                                 compatibility; no live entries remain.
+#   settings-json-binding       — step-09 settings.json hook block refs
+#   teardown-binding            — step-06 Convene primitive teardown call
+#                                 (shutdown_request / TeamDelete)
+#   platform-fact-env-var-doc   — step-09:52 env-var documentation
+
+keep_list:
+  # ── step-00: Platform capability ingestion ──────────────────────────
+  # Capability schema YAML rows — frozen platform-tool name list.
+  - file: "step-00-platform-ingestion.md"
+    line: 65
+    term: "Task tool"
+    match_kind: "literal"
+    reason: "capability-schema"
+    note: "Schema comment binding 'Agent' (platform name) to 'Task tool' (legacy spec vocabulary)."
+  - file: "step-00-platform-ingestion.md"
+    line: 69
+    term: "TeamCreate"
+    match_kind: "literal"
+    reason: "capability-schema"
+    note: "platform.tools[] YAML row enumerating TeamCreate."
+  - file: "step-00-platform-ingestion.md"
+    line: 72
+    term: "TeamDelete"
+    match_kind: "literal"
+    reason: "capability-schema"
+    note: "platform.tools[] YAML row enumerating TeamDelete."
+  - file: "step-00-platform-ingestion.md"
+    line: 75
+    term: "SendMessage"
+    match_kind: "literal"
+    reason: "capability-schema"
+    note: "platform.tools[] YAML row enumerating SendMessage."
+  - file: "step-00-platform-ingestion.md"
+    line: 161
+    term: "SubagentStart"
+    match_kind: "literal"
+    reason: "capability-schema"
+    note: "platform.hooks[] YAML row enumerating the SubagentStart hook point."
+  - file: "step-00-platform-ingestion.md"
+    line: 175
+    term: "Task tool"
+    match_kind: "literal"
+    reason: "capability-schema-prose"
+    note: "Didactic note: 'Agent' on the platform is referred to as 'Task tool' in spec corpus."
+  - file: "step-00-platform-ingestion.md"
+    line: 182
+    term: "SubagentStart"
+    match_kind: "literal"
+    reason: "capability-schema-prose"
+    note: "Hook matchers note: SubagentStart fires for general-purpose agents."
+  - file: "step-00-platform-ingestion.md"
+    line: 279
+    term: "SubagentStart"
+    match_kind: "literal"
+    reason: "capability-schema-prose"
+    note: "Verification checklist item: hooks section present with SubagentStart entry."
+  - file: "step-00-platform-ingestion.md"
+    line: 307
+    term: "SubagentStart"
+    match_kind: "literal"
+    reason: "capability-schema-prose"
+    note: "Audit note describing step-07's consumption of hooks[point=SubagentStart].matchers[0]."
+  - file: "step-00-platform-ingestion.md"
+    line: 319
+    term: "SubagentStart"
+    match_kind: "literal"
+    reason: "capability-schema-prose"
+    note: "Output binding: step-07 consumes hooks[point=SubagentStart].matchers[0]."
+  - file: "step-00-platform-ingestion.md"
+    line: 320
+    term: "SubagentStart"
+    match_kind: "literal"
+    reason: "capability-schema-prose"
+    note: "Output binding: step-09 consumes hooks for SubagentStart hook configuration."
+
+  # ── step-06: skill prompts (BL-025-m.2: commands → skills) ──────────
+  # Post-cycle the file generates skills/<name>/SKILL.md files rather
+  # than src/commands/*.md. Each entry below was reconfirmed against
+  # the rewritten file; line numbers shift accordingly.
+  - file: "step-06-commands.md"
+    line: 62
+    term: "Task tool"
+    match_kind: "literal"
+    reason: "teardown-binding"
+    note: "cycle-skill body bullet documenting the Moderate-tier execution model: '3-phase Task tool engagement'. Platform-fact reference to the literal Claude Code primitive name."
+  - file: "step-06-commands.md"
+    line: 62
+    term: "TeamDelete"
+    match_kind: "literal"
+    reason: "teardown-binding"
+    note: "Convene primitive teardown call sequence (shutdown_request → TeamDelete) — platform-fact reference describing the literal Claude Code tool used to dispose a team. Parallel to the M16 §3 capability-schema exemption pattern."
+  - file: "step-06-commands.md"
+    line: 77
+    term: "SubagentStart"
+    match_kind: "literal"
+    reason: "teardown-binding"
+    note: "health-check skill frontmatter description: 'SubagentStart hook wiring' — the skill's stated diagnostic surface. Platform-fact reference identifying the hook contract under test."
+  - file: "step-06-commands.md"
+    line: 89
+    term: "SubagentStart"
+    match_kind: "literal"
+    reason: "teardown-binding"
+    note: "health-check skill body Probe 5: 'SubagentStart hook wiring (`hooks/hooks.json` matcher inspection)'. Platform-fact reference to the live hook contract Probe 5 inspects."
+
+  # ── step-07: oj-helper inject-profile contract ──────────────────────
+  - file: "step-07-helper-script.md"
+    line: 17
+    term: "SubagentStart"
+    match_kind: "literal"
+    reason: "inject-profile-binding"
+    note: "Spec input note: hooks[point=SubagentStart].matchers[0] used as agent type filter in inject-profile."
+  - file: "step-07-helper-script.md"
+    line: 62
+    term: "SubagentStart"
+    match_kind: "literal"
+    reason: "inject-profile-binding"
+    note: "Subcommand-enumeration prose: lists SessionStart/SubagentStart hooks wired to the three hook-bearing subcommands."
+  - file: "step-07-helper-script.md"
+    line: 66
+    term: "SubagentStart"
+    match_kind: "literal"
+    reason: "inject-profile-binding"
+    note: "Enumeration row: 'cmd_inject_profile — SubagentStart hook (§1)'."
+  - file: "step-07-helper-script.md"
+    line: 78
+    term: "SubagentStart"
+    match_kind: "literal"
+    reason: "inject-profile-binding"
+    note: "Subcommand heading: 'inject-profile — SubagentStart Hook'."
+  - file: "step-07-helper-script.md"
+    line: 82
+    term: "SubagentStart"
+    match_kind: "literal"
+    reason: "inject-profile-binding"
+    note: "Invocation note: Called by Claude Code's SubagentStart hook."
+  - file: "step-07-helper-script.md"
+    line: 86
+    term: "SubagentStart"
+    match_kind: "literal"
+    reason: "inject-profile-binding"
+    note: "[EXTERNAL] block: agent type filter resolved from hooks[point=SubagentStart].matchers[0]."
+  - file: "step-07-helper-script.md"
+    line: 90
+    term: "SubagentStart"
+    match_kind: "literal"
+    reason: "inject-profile-binding"
+    note: "Filter step: 'matching the SubagentStart hook matcher'."
+  - file: "step-07-helper-script.md"
+    line: 109
+    term: "SubagentStart"
+    match_kind: "literal"
+    reason: "inject-profile-binding"
+    note: "JSON output: hookEventName = 'SubagentStart'."
+  - file: "step-07-helper-script.md"
+    line: 120
+    term: "SubagentStart"
+    match_kind: "literal"
+    reason: "inject-profile-binding"
+    note: "Debug-output spec: resolves hooks[point=SubagentStart].matchers[0]."
+  - file: "step-07-helper-script.md"
+    line: 324
+    term: "SubagentStart"
+    match_kind: "literal"
+    reason: "inject-profile-binding"
+    note: "Help text: 'inject-profile — SubagentStart hook'."
+  - file: "step-07-helper-script.md"
+    line: 392
+    term: "SubagentStart"
+    match_kind: "literal"
+    reason: "inject-profile-binding"
+    note: "Step-07 dependency: platform-snapshot.yaml SubagentStart hook matcher."
+
+  # ── step-08: RETIRED (BL-025-m.1) ───────────────────────────────────
+  # Makefile installer obsolete in plugin form. step-08-installer.md
+  # deleted; keep_list entries removed with it. Numeric gap preserved.
+
+  # ── step-09: RETIRED in plugin form (BL-025-m.2) ────────────────────
+  # Pre-cycle step-09 emitted src/settings.json with TeamCreate/TeamDelete
+  # env-var docs and 7 SubagentStart hook-binding references. Plugin form
+  # retires settings.json (user-configured under ~/.claude/, outside the
+  # plugin distribution); SubagentStart bindings relocated to step-07
+  # (inject-profile agent-type filter) and the static hooks.json manifest
+  # emitted by lib/emit-static-plugin-manifest.sh. No live step-09 keep_list
+  # entries remain. Numeric gap preserved per generator ALL_STEPS comment.

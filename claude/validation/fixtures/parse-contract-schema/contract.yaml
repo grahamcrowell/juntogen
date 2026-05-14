@@ -1,0 +1,43 @@
+# Frozen fixture for BL-028 parse-contract.py schema-drift guard.
+#
+# Exercises BOTH subcommands with multiple rows so the schema-snapshot test
+# can assert column count is uniform AND matches the documented value:
+#   keep-list    -> 7 columns
+#   banned-terms -> 5 columns
+#
+# CHANGE POLICY: this fixture is paired with parse-contract-schema-test.sh.
+# Adding a column to parse-contract.py SHOULD fail this test — that is the
+# whole point. When you intentionally grow the schema, update BOTH the
+# fixture (if you want richer coverage) AND the expected count in the test.
+banned_terms:
+  - term: "AlphaTool"
+    kind: "literal"
+    scope: "core-spec-corpus"
+    assertion: "s13"
+    exempt_regions: ["region-one", "region-two"]
+  - term: "BetaTool"
+    kind: "literal"
+    scope: "core-spec-corpus"
+    # assertion intentionally absent on this row — proves emitter still emits
+    # the column (as empty string), which is critical for column-count parity.
+    exempt_regions: ["region-one"]
+  - term: "(^|[^a-zA-Z0-9_-])(gamma|delta)([^a-zA-Z0-9_-]|$)"
+    kind: "regex"
+    scope: "core-spec-corpus"
+    assertion: "s16"
+    exempt_regions: []
+keep_list:
+  - file: "FAKE-spec.md"
+    line: 1
+    term: "AlphaTool"
+    match_kind: "literal"
+    context_hash: "deadbeef"
+    reason: "platform-binding-surface"
+    signed_off_by: "test-fixture"
+  - file: "FAKE-spec.md"
+    line: "10-15"
+    term: "BetaTool"
+    match_kind: "literal"
+    context_hash: "cafef00d"
+    reason: "snapshot-doc"
+    signed_off_by: "test-fixture"

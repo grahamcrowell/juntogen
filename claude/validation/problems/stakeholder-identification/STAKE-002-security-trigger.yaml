@@ -1,0 +1,6 @@
+INPUT: "Add API key authentication to our public endpoints"
+EXPECTED:
+  tier: Moderate
+  stakeholders: [Product, Tech, Security, Operations]
+  delegation: task-tool
+RATIONALE: "Security trigger: authentication/authorization requires Security stakeholder"

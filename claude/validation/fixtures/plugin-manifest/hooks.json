@@ -1,0 +1,34 @@
+{
+  "description": "OpenJunto coordination hooks",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/oj-helper conductor-inject",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/oj-helper migrate-legacy",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "matcher": "general-purpose",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/oj-helper inject-profile",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

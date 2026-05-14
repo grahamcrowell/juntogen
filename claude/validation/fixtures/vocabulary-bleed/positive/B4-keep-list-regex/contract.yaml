@@ -1,0 +1,14 @@
+banned_terms:
+  - term: "(^|[^a-zA-Z0-9_-])(haiku|sonnet|opus)([^a-zA-Z0-9_-]|$)"
+    kind: "regex"
+    scope: "core-spec-corpus"
+    exempt_regions: ["m16-section-3", "d08-verbatim-blocks"]
+keep_list:
+  - file: "D24-fixture.md"
+    line: 3
+    term: "(^|[^a-zA-Z0-9_-])(haiku|sonnet|opus)([^a-zA-Z0-9_-]|$)"
+    match_kind: "regex"
+    context_hash: "c850d9a7"
+    reason: "platform-binding-surface"
+    signed_off_by: "senior-technical-writer"
+    signed_off_at: "2026-05-06"

@@ -1,0 +1,32 @@
+# Shared minimal contract used by most negative fixtures: all 7 banned terms,
+# empty keep_list. Fixtures that need a custom keep_list write their own.
+banned_terms:
+  - term: "Task tool"
+    kind: "literal"
+    scope: "core-spec-corpus"
+    exempt_regions: ["m16-section-3", "d08-verbatim-blocks"]
+  - term: "TeamCreate"
+    kind: "literal"
+    scope: "core-spec-corpus"
+    exempt_regions: ["m16-section-3", "d08-verbatim-blocks"]
+  - term: "SendMessage"
+    kind: "literal"
+    scope: "core-spec-corpus"
+    exempt_regions: ["m16-section-3", "d08-verbatim-blocks"]
+  - term: "SubagentStart"
+    kind: "literal"
+    scope: "core-spec-corpus"
+    exempt_regions: ["m16-section-3", "d08-verbatim-blocks"]
+  - term: "~/.claude/"
+    kind: "literal"
+    scope: "core-spec-corpus"
+    exempt_regions: ["m16-section-3", "d08-verbatim-blocks"]
+  - term: "CLAUDE.md"
+    kind: "literal"
+    scope: "core-spec-corpus"
+    exempt_regions: ["m16-section-3", "d08-verbatim-blocks"]
+  - term: "(^|[^a-zA-Z0-9_-])(haiku|sonnet|opus)([^a-zA-Z0-9_-]|$)"
+    kind: "regex"
+    scope: "core-spec-corpus"
+    exempt_regions: ["m16-section-3", "d08-verbatim-blocks"]
+keep_list: []

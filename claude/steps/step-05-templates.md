@@ -1,0 +1,165 @@
+# Generation Prompt: Step 05 — Templates
+
+## Input
+
+Read these specification files before generating:
+
+1. **Primary spec**: `D48-reference-system.md` § Template Inventory — defines the 5 templates, when to use each, and essential sections
+2. **Supporting context**: Review Template Evolution and Template Selection notes in spec D48
+
+Also examine the actual OpenJunto source files for reference:
+- `templates/technical-analysis.md`
+- `templates/architecture-decision-record.md`
+- `templates/retrospective.md`
+- `templates/session-state.md`
+- `templates/communications-playbook.md`
+
+## Task
+
+Generate **5 deliverable templates** in markdown format. Create each file at the path specified:
+
+1. `templates/technical-analysis.md`
+2. `templates/architecture-decision-record.md`
+3. `templates/retrospective.md`
+4. `templates/session-state.md`
+5. `templates/communications-playbook.md`
+
+Each template is a structured format for a common deliverable type. Templates are starting points — projects copy to `.claude/` and customize as needed.
+
+## Key Requirements
+
+### 1. technical-analysis.md
+
+**When to use**: Investigations, evaluations, technical deep dives.
+
+**Essential sections**:
+1. **Summary**: 2-3 sentences (what was analyzed, key finding, recommendation)
+2. **Context**: Objective, Scope, Constraints
+3. **Methodology**: Approach, Data Sources, Assumptions
+4. **Findings**: Per finding: Observation, Evidence, Confidence (H/M/L), Implication
+5. **Options Analysis**: Comparison table with criteria as rows, options as columns
+6. **Recommendation**: Recommended option with rationale, Next Steps with owners
+7. **Risks**: Table with columns: Risk | Likelihood | Impact | Mitigation
+8. **Dissenting Views**: Document disagreements from reviewers (even if overruled)
+9. **Metadata**: Author, Reviewer, Date, Tier (Simple/Moderate/Complex)
+
+**Format notes**:
+- Use markdown tables for Options Analysis and Risks
+- Use subheadings (###) for each Finding
+- Use bullet lists for Next Steps
+- Include placeholder text in `[brackets]` to guide completion
+
+### 2. architecture-decision-record.md
+
+**When to use**: Significant technical decisions requiring documentation.
+
+**Essential sections**:
+1. **Status**: Proposed | Accepted | Deprecated | Superseded by ADR-XXX
+2. **Date**: YYYY-MM-DD
+3. **Context**: What situation or problem motivates this decision?
+4. **Decision Drivers**: Bulleted list of factors influencing the decision
+5. **Considered Options**: 3+ alternatives, each with brief description
+6. **Decision**: Chosen option with rationale
+7. **Reversibility Assessment**:
+   - Reversibility level (Easy / Moderate / Difficult / Irreversible)
+   - Reversal cost if wrong
+   - One-way door? (Yes/No with additional scrutiny note if yes)
+8. **Consequences**:
+   - Positive: Benefits (bulleted)
+   - Negative: Tradeoffs (bulleted)
+   - Risks: Table with Risk | Likelihood | Impact | Mitigation
+9. **Validation**: Success metrics, Review date
+10. **References**: Related documents, ADRs, or resources
+11. **Metadata**: Author, Reviewers, Approved by
+
+**Format notes**:
+- Use horizontal rules (---) to separate major sections
+- Reversibility Assessment is critical for one-way doors — emphasize with formatting
+- ADR number in title: `# ADR-[NUMBER]: [TITLE]`
+
+### 3. retrospective.md
+
+**When to use**: Complex tier post-engagement (required), optional for Moderate if issues arose.
+
+**Essential sections**:
+1. **Document Header**: Markdown blockquote with Date, Engagement Tier, Participants, Facilitator
+2. **Engagement Summary**: Original Request, Delivered Outcome, Duration, Experts Engaged, Tier, Circuit Breaker Activated (Yes/No)
+3. **What Went Well**: Table with columns: # | Item | Impact. Include Details subsection elaborating on key positives
+4. **What Could Be Improved**: Table with columns: # | Item | Impact | Root Cause. Include Details subsection
+5. **Questions & Puzzles**: Bulleted list of unresolved observations
+6. **Action Items**: Table with columns: # | Action | Owner | Target | Priority (H/M/L). Include Action Categories subsection (Process, Profile, Template, Documentation)
+7. **Metrics Review**: Table with columns: Metric | This Engagement | Notes. Include Rework cycles, Expert deadlocks, Tier classification accuracy, Quality gates passed, User checkpoints
+8. **Profile/Process Updates Identified**: Two tables:
+   - Profile Updates: Profile | Section | Proposed Change
+   - Process Updates: Document | Section | Proposed Change
+
+**Additional sections**:
+- **Quality Checklist**: 5 verification items before finalizing
+- **Usage Notes**: When to use, time target (15 minutes), follow-through guidance, AI agent context note about session-level vs cross-session tracking
+
+**Format notes**:
+- Use blockquote for document header (`> **Date**: ...`)
+- Time target: 15 minutes per CLAUDE.md workflow
+- AI agent context: Retrospectives serve to document learnings for user, identify immediate improvements, propose profile/process updates
+
+### 4. session-state.md
+
+**When to use**: `.claude/state/session.md` volatile layer, updated at session boundaries via session save command.
+
+**Essential sections**:
+1. **Header**: `> Updated: {YYYY-MM-DD}, session {N}`
+2. **In-Flight PRs**: Table with columns: # | Repo | Title | Status | Notes
+3. **Local Workspace State**: Table with columns: Repo | Branch | Dirty | Unpushed | Notes
+4. **Session Carry-Over**:
+   - HTML comment explaining retention policy (most recent 3 sessions full detail, >7 days compress to single-line, >14 days remove)
+   - Current session entry: `*Completed this session ({date}, session {N}):*` with numbered list
+   - Prior sessions: Similar format, compressed as appropriate
+5. **Next Actions**: Numbered list of next steps
+
+**Format notes**:
+- Use blockquote for header (`> Updated: ...`)
+- Use `clean / {FILES}` for Dirty column (shows either "clean" or list of dirty files)
+- Use `{COUNT}` for Unpushed column
+- Include HTML comment for retention policy (not rendered, documents the rule)
+- Use italics with asterisks for session headings: `*Completed this session:*`
+
+### 5. communications-playbook.md
+
+**When to use**: `.claude/COMMS.md` signal gate + channel routing for projects with multiple stakeholder channels and communication fatigue risk.
+
+**Essential sections**:
+1. **Signal Gate**: Table with columns: Signal | Post to. Include note that gate prevents noise — communication warranted ONLY on change events, not elapsed time. List 7 signals (AC completed, blocker discovered/resolved, status transition, decision made, story/task completed, health status shift, ask/escalation needed). Include "Not a signal" list (elapsed time, internal housekeeping, current-state restatement, WIP without milestone)
+2. **Hierarchy Rule**: Explanation of one event = one post at lowest level. Only roll up when aggregated picture changes. Don't echo same news at multiple levels.
+3. **Channel Routing**: Table with columns: Channel | Purpose | Trigger | Format. Include 4+ channels (ticket system, team channel, stakeholder channel, status meeting/doc)
+4. **Drafts**: Table with columns: Date | Channel | Draft | Status. Include note about expanding drafts inline for review with HTML comments showing format
+5. **Log**: Per-channel sections with tables (Date | Summary columns) showing communication history
+
+**Format notes**:
+- Use HTML comments extensively for inline documentation (`<!-- ... -->`)
+- Include example placeholders: `{Project Name}`, `{Channel}`, `{YYYY-MM-DD}`
+- Signal gate is the most critical section — emphasize event-driven vs time-driven
+- Hierarchy rule prevents duplication noise
+
+## Format Requirements
+
+Each template must:
+1. Include instructional comments where helpful (using HTML comments or markdown blockquotes)
+2. Use placeholder text in `{BRACES}` or `[BRACKETS]` to indicate user-customizable content
+3. Use consistent heading levels (# for title, ## for major sections, ### for subsections)
+4. Include example values where they clarify the format
+5. Match the tone of the source files (instructional, clear structure, practical)
+
+## Verification
+
+After generation, verify each template:
+
+1. **Section completeness**: All essential sections from spec present
+2. **Format consistency**: Tables have correct columns, placeholders are clearly marked
+3. **Practical usability**: Template can be copied and filled out without confusion
+4. **Example quality**: Example values clarify without over-specifying
+5. **Comment clarity**: Instructional comments add value without cluttering
+
+## Dependencies
+
+- **Step 01** (CLAUDE.md) must be complete — defines when templates are used (e.g., retrospective required for Complex tier)
+- **Step 04** (reference files) must be complete — templates are referenced in workflow-stages.md and project-scaffolding.md

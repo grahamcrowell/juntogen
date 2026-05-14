@@ -1,0 +1,6 @@
+INPUT: "Build an ETL pipeline to sync user analytics from MongoDB to Snowflake"
+EXPECTED:
+  tier: Complex
+  stakeholders: [Product, Tech, Data, Analytics, Architecture, Operations]
+  delegation: team
+RATIONALE: "Data trigger: data modeling + pipeline requires Data stakeholder. Analytics trigger: analytics/experimentation requires Analytics stakeholder"

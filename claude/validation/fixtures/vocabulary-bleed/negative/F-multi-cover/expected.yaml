@@ -1,0 +1,5 @@
+exit_code: 1
+must_contain_stderr:
+  - "multi-cover-keep-list"
+  - "~/.claude/CLAUDE.md"
+  - "FILE: F16-fixture.md"

@@ -1,0 +1,14 @@
+banned_terms:
+  - term: "Task tool"
+    kind: "literal"
+    scope: "core-spec-corpus"
+    exempt_regions: ["m16-section-3", "d08-verbatim-blocks"]
+keep_list:
+  - file: "D24-fixture.md"
+    line: 3
+    term: "Task tool"
+    match_kind: "literal"
+    context_hash: "0155f02f"
+    reason: "platform-binding-surface"
+    signed_off_by: "pending-tech-writer-review"
+    signed_off_at: "2026-05-06"

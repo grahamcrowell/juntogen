@@ -1,0 +1,7 @@
+exit_code: 1
+must_contain_stderr:
+  - "banned-term-bleed"
+  - "Task tool"
+  - "LINE: 9"
+must_not_contain_stderr:
+  - "LINE: 6"

@@ -1,0 +1,6 @@
+INPUT: "Design a system to auto-scale our microservices based on queue depth metrics"
+EXPECTED:
+  tier: Complex
+  stakeholders: [Product, Tech, Architecture, Operations, Reliability, Analytics]
+  delegation: team
+RATIONALE: "Architecture trigger: cross-system integration. Operations trigger: infrastructure/CI/CD. Reliability trigger: SLOs/reliability. Analytics trigger: metrics systems"

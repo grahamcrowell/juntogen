@@ -1,0 +1,6 @@
+INPUT: "Add this to the backlog: investigate Redis caching for user sessions"
+EXPECTED:
+  tier: Simple
+  stakeholders: [Product, Tech]
+  delegation: inline
+RATIONALE: "Manager MAY directly update BACKLOG.md - exception to delegation boundary"

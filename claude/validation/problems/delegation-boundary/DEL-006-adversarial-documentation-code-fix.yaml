@@ -1,0 +1,6 @@
+INPUT: "The API documentation mentions a 'status' field but the code returns 'state' instead - fix it"
+EXPECTED:
+  tier: Moderate
+  stakeholders: [Product, Tech, Documentation]
+  delegation: task-tool
+RATIONALE: "Manager MUST delegate - ambiguous whether to fix docs or code, requires expert judgment on breaking changes"

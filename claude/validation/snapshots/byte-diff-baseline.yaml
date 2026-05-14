@@ -1,0 +1,46 @@
+# byte-diff-baseline.yaml — BL-025-m.3 Layer 5 source-of-truth
+#
+# Byte-diff baseline for DATA-class artifacts (per platform-contract.yaml
+# output_classes block). Each entry pairs a relative path under PLUGIN_ROOT
+# with the expected sha256 + the emit helper function that produced it.
+#
+# Source of truth: live emit-helper invocation at v0.0.2. Re-emitting the
+# helper on the same inputs MUST yield byte-identical content per the DATA-
+# class invariant; this baseline locks the expected sha256 set so any drift
+# (helper edit, heredoc tweak, JSON key-order shift) is caught by Layer 5
+# of structural-diff.sh BEFORE the regen tree is committed to oj-claude/.
+#
+# DO NOT edit by hand — regenerate via:
+#   bash juntogen/claude/lib/emit-static-plugin-manifest.sh --all /tmp/baseline-regen 0.0.2
+#   shasum -a 256 /tmp/baseline-regen/{.claude-plugin/plugin.json,hooks/hooks.json,bin/lib/contracts.sh,platform-defaults.yaml}
+#
+# Consistency invariant (asserted by byte-diff-baseline-consistency-test.sh
+# per BL-025-m.3 M1 amendment): for every entry, the recorded sha256 MUST
+# equal both (a) the frozen fixture at
+#   juntogen/claude/validation/fixtures/plugin-manifest/<basename>
+# and (b) the live emit-helper output for that file. The three-way equality
+# proves the baseline is anchored to the helper, not to today's oj-claude
+# bytes (closing the chicken-and-egg gap in the m.3 plan FALSIFIER).
+---
+snapshot_version: "1"
+captured_at: "2026-05-13T20:00:00Z"
+baseline_tag: "oj-claude-v0.0.1-handcut-baseline"
+source: "juntogen/claude/lib/emit-static-plugin-manifest.sh --all <out> 0.0.2"
+
+entries:
+  - path: ".claude-plugin/plugin.json"
+    class: data
+    sha256: "a4578f51e28c9a173e1bd64cf8b517041fe5dc4111f0c12c916f72ab0d5e21c5"
+    provenance: emit_plugin_json
+  - path: "hooks/hooks.json"
+    class: data
+    sha256: "0aced834378ce3d55b40a9d8aafc9a366ac32f2cd5e7b8f663b883f9b9052609"
+    provenance: emit_hooks_json
+  - path: "bin/lib/contracts.sh"
+    class: data
+    sha256: "88bf778cbedae626c05afae86124f8dac65e5eb8ab4c46dae8449f6c1dba1a20"
+    provenance: emit_contracts_sh
+  - path: "platform-defaults.yaml"
+    class: data
+    sha256: "42ed171f2f9c1f38b2d4bb8d0bbcd25e888e858c1102a7baa80508c8d331c534"
+    provenance: emit_platform_defaults

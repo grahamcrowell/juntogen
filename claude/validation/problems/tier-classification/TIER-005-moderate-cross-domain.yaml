@@ -1,0 +1,6 @@
+INPUT: "Integrate payment processor API with our checkout flow"
+EXPECTED:
+  tier: Moderate
+  stakeholders: [Product, Tech, Security, Operations]
+  delegation: task-tool
+RATIONALE: "Task tool engagement with stakeholder analysis, lead implementation, and adversarial review phases"

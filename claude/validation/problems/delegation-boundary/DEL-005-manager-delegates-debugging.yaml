@@ -1,0 +1,6 @@
+INPUT: "The login endpoint is returning 500 errors - find and fix the bug"
+EXPECTED:
+  tier: Moderate
+  stakeholders: [Product, Tech, Quality, Operations]
+  delegation: task-tool
+RATIONALE: "Manager delegates debugging to senior-software-engineer - manager may run diagnostics but MUST NOT implement fixes"

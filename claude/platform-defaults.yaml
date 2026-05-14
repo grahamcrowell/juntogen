@@ -1,0 +1,159 @@
+# platform-defaults.yaml
+# Curated offline fallback representing the current Claude Code platform.
+# Used by Step 00 when no platform-declaration.yaml is present and introspection
+# is unavailable (defaults mode). Also used as the fallback source for fields
+# that introspection cannot observe (hooks, constraints, cost ratios, other models' details).
+#
+# VERSION: Update `version` when the platform roster changes significantly
+# (new model generation, new tools, context window changes, cost ratio shifts).
+# The version field enables staleness detection in Step 00.
+#
+# NAMING: The platform tool "Agent" is referred to as "Task tool" in spec vocabulary
+# (D08–D80). See M16-derivation-architecture.md §3 for the mapping note.
+#
+# MODEL IDs: api_id strings are Anthropic's canonical identifiers. Haiku includes a
+# date suffix (`claude-haiku-4-5-20251001`) per Anthropic's current naming;
+# Sonnet/Opus do not. This reflects upstream convention, not internal inconsistency.
+#
+# See: M16-derivation-architecture.md §3 for schema definition and field semantics.
+
+version: "1.0.0"
+version_date: "2026-04-08"
+description: "Claude Code platform defaults — claude-opus-4-6 / claude-sonnet-4-6 / claude-haiku-4-5 generation"
+
+platform:
+  tools:
+    # --- Agent spawning (platform name: "Agent"; spec vocabulary: "Task tool") ---
+    - name: "Agent"
+      available: true
+      parameters: ["description", "model", "plan_mode_required", "subagent_type"]
+
+    # --- Team coordination ---
+    - name: "TeamCreate"
+      available: true
+      parameters: ["team_name", "description"]
+    - name: "TeamDelete"
+      available: true
+      parameters: ["team_id"]
+    - name: "SendMessage"
+      available: true
+      parameters: ["to", "message", "summary"]
+
+    # --- Task management ---
+    - name: "TaskCreate"
+      available: true
+      parameters: ["subject", "description", "activeForm", "metadata"]
+    - name: "TaskUpdate"
+      available: true
+      parameters: ["taskId", "status", "owner", "description", "subject", "activeForm", "metadata", "addBlocks", "addBlockedBy"]
+    - name: "TaskList"
+      available: true
+      parameters: []
+    - name: "TaskGet"
+      available: true
+      parameters: ["taskId"]
+
+    # --- File operations ---
+    - name: "Read"
+      available: true
+      parameters: ["file_path", "limit", "offset", "pages"]
+    - name: "Edit"
+      available: true
+      parameters: ["file_path", "old_string", "new_string", "replace_all"]
+    - name: "Write"
+      available: true
+      parameters: ["file_path", "content"]
+    - name: "NotebookEdit"
+      available: true
+      parameters: ["notebook_path", "new_source", "cell_id", "cell_type", "edit_mode"]
+
+    # --- Shell and search ---
+    - name: "Bash"
+      available: true
+      parameters: ["command", "description", "timeout", "run_in_background", "dangerouslyDisableSandbox"]
+    - name: "Glob"
+      available: true
+      parameters: ["pattern", "path"]
+    - name: "Grep"
+      available: true
+      parameters: ["pattern", "path", "glob", "type", "output_mode", "context", "head_limit", "offset", "multiline", "-A", "-B", "-C", "-i", "-n"]
+
+    # --- Meta/discovery ---
+    - name: "Skill"
+      available: true
+      parameters: ["skill", "args"]
+    - name: "ToolSearch"
+      available: true
+      parameters: ["query", "max_results"]
+
+    # --- Web ---
+    - name: "WebFetch"
+      available: true
+      parameters: ["url", "prompt"]
+    - name: "WebSearch"
+      available: true
+      parameters: ["query", "allowed_domains", "blocked_domains"]
+
+    # --- Git worktrees ---
+    - name: "EnterWorktree"
+      available: true
+      parameters: ["name"]
+    - name: "ExitWorktree"
+      available: true
+      parameters: ["action", "discard_changes"]
+
+    # --- Scheduling (session-scoped) ---
+    - name: "CronCreate"
+      available: true
+      parameters: ["cron", "prompt", "recurring"]
+    - name: "CronDelete"
+      available: true
+      parameters: ["id"]
+    - name: "CronList"
+      available: true
+      parameters: []
+
+    # --- User interaction (non-team context only) ---
+    - name: "AskUserQuestion"
+      available: conditional   # available in direct sessions; not available in team sub-agent context
+      parameters: ["questions", "answers", "annotations", "metadata"]  # confirmed: ToolSearch schema (2026-04-08); primary param is "questions" (array of question objects)
+
+  models:
+    # Symbolic id: used in derivation chains and human-readable references
+    # api_id: actual string for Claude Code model parameter and settings.json
+    # cost_ratio: relative input token cost, haiku = 1.0 baseline
+    - id: "haiku"
+      api_id: "claude-haiku-4-5-20251001"
+      tier: "routine"
+      context_window: 200000    # confirmed: Anthropic docs (2026-04-08) — 200K context
+      max_output_tokens: 64000
+      cost_ratio: 1.0
+    - id: "sonnet"
+      api_id: "claude-sonnet-4-6"
+      tier: "implementation"
+      context_window: 1000000   # confirmed: Anthropic docs (2026-04-08) — 1M context
+      max_output_tokens: 64000
+      cost_ratio: 3.0
+    - id: "opus"
+      api_id: "claude-opus-4-6"
+      tier: "reasoning"
+      context_window: 1000000   # confirmed: system prompt states "1M context"
+      max_output_tokens: 128000
+      cost_ratio: 5.0
+
+  hooks:
+    - point: "SubagentStart"
+      capabilities:
+        - "modify_prompt"
+        - "add_context"
+      matchers:
+        - "general-purpose"   # fires for general-purpose agents only (not Bash/Explore/Plan)
+    - point: "SessionStart"
+      capabilities:
+        - "run_command"
+      matchers: []            # no agent-type filter; fires for all sessions
+
+  constraints:
+    max_concurrent_agents: 5
+    # "configured" = tunable recommendation; "hard" = platform-enforced ceiling
+    max_concurrent_agents_type: "configured"

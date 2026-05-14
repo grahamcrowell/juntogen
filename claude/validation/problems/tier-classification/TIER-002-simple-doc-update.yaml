@@ -1,0 +1,6 @@
+INPUT: "Fix the typo in README.md line 42"
+EXPECTED:
+  tier: Simple
+  stakeholders: [Product, Tech]
+  delegation: inline
+RATIONALE: "Inline perspective rotation with PERSPECTIVE blocks"
