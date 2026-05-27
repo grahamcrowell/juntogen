@@ -108,6 +108,57 @@ EOF
     echo "wrote: ${plugin_dir}/plugin.json (version=${version})"
 }
 
+# emit_marketplace_json <output_dir>
+#
+# Writes <output_dir>/.claude-plugin/marketplace.json — the single-plugin
+# marketplace manifest that turns a plugin repo into a self-installable
+# local marketplace. With this file in place, adopters can run
+#   git clone <repo> /path/to/oj-claude
+#   claude plugin marketplace add /path/to/oj-claude
+#   claude plugin install oj@openjunto --scope user
+# without hand-crafting any intermediate manifest.
+#
+# Reference shape: minimal valid single-plugin marketplace. The `owner.name`
+# field is required by the marketplace schema (validated at
+# `claude plugin marketplace add` time — its absence triggers a Zod-style
+# "owner: Invalid input: expected object, received undefined" error).
+#
+# This file is DATA-class: deterministic, no LLM creativity needed.
+# Re-emitting on the same inputs produces byte-identical output.
+#
+# Note: the marketplace `name` ("openjunto") is the namespace adopters
+# reference at install time (`claude plugin install oj@openjunto`); the
+# plugin `name` ("oj") matches the value in plugin.json.
+emit_marketplace_json() {
+    local output_dir="${1:-}"
+    [ -n "${output_dir}" ] || _eatpm_die "emit_marketplace_json requires output_dir"
+    [ -d "${output_dir}" ] || mkdir -p "${output_dir}"
+
+    local plugin_dir="${output_dir}/.claude-plugin"
+    mkdir -p "${plugin_dir}"
+
+    command -v jq >/dev/null 2>&1 || _eatpm_die "jq required (install: brew install jq)"
+
+    cat > "${plugin_dir}/marketplace.json" <<'EOF'
+{
+  "name": "openjunto",
+  "owner": {
+    "name": "openjunto"
+  },
+  "plugins": [
+    { "name": "oj", "source": "./" }
+  ]
+}
+EOF
+
+    # Parse sanity (jq must accept the file). Catches accidental edits that
+    # break JSON.
+    jq -e . "${plugin_dir}/marketplace.json" >/dev/null 2>&1 \
+        || _eatpm_die "emit_marketplace_json produced invalid JSON at ${plugin_dir}/marketplace.json"
+
+    echo "wrote: ${plugin_dir}/marketplace.json"
+}
+
 # emit_hooks_json <output_dir>
 #
 # Writes <output_dir>/hooks/hooks.json with the deterministic 2-handler
@@ -337,6 +388,7 @@ if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
             [ -n "${output_dir}" ] || _eatpm_die "--all requires output_dir as 1st arg"
             [ -n "${version}" ]    || _eatpm_die "--all requires version as 2nd arg"
             emit_plugin_json "${output_dir}" "${version}"
+            emit_marketplace_json "${output_dir}"
             emit_hooks_json "${output_dir}"
             emit_contracts_sh "${output_dir}"
             emit_platform_defaults "${output_dir}"
@@ -356,6 +408,7 @@ if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
             cat <<EOF
 USAGE:
     emit-static-plugin-manifest.sh --plugin-json        <output_dir> <version>
+    emit-static-plugin-manifest.sh --marketplace-json   <output_dir>
     emit-static-plugin-manifest.sh --hooks-json         <output_dir>
     emit-static-plugin-manifest.sh --contracts-sh       <output_dir>
     emit-static-plugin-manifest.sh --platform-defaults  <output_dir>
@@ -363,9 +416,9 @@ USAGE:
     emit-static-plugin-manifest.sh --all                <output_dir> <version>
     emit-static-plugin-manifest.sh --both               <output_dir> <version>  # legacy
 
-When sourced, exposes emit_plugin_json(), emit_hooks_json(),
-emit_contracts_sh(), emit_platform_defaults(), emit_plugin_scripts()
-functions.
+When sourced, exposes emit_plugin_json(), emit_marketplace_json(),
+emit_hooks_json(), emit_contracts_sh(), emit_platform_defaults(),
+emit_plugin_scripts() functions.
 
 The first four artifacts are DATA-class outputs (per platform-contract.yaml
 output_classes); re-emitting on the same inputs produces byte-identical
