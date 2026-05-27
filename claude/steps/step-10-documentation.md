@@ -41,12 +41,12 @@ Generate three user-facing documentation files:
    make install
    ```
 
-3. **Usage** — Show how OpenJunto activates automatically:
-   - "Review this pull request for security issues."
-   - "Fix the flaky test in auth_service_test.go."
-   - "Evaluate whether we should migrate from REST to gRPC for internal services."
+3. **Usage** — Show how to put OpenJunto to work: the manager protocol loads at session start; the user invokes a coordinated cycle with `/oj:cycle <task>` (or `/oj:run-task` for a backlog item). Examples:
+   - "/oj:cycle Review this pull request for security issues."
+   - "/oj:cycle Fix the flaky test in auth_service_test.go."
+   - "/oj:cycle Evaluate whether we should migrate from REST to gRPC for internal services."
 
-   Explain that the Manager handles triage, expert selection, peer review, and quality gates transparently.
+   Explain that the Manager handles triage, expert selection, peer review, and quality gates, and that the user does not name experts — the Manager selects them.
 
 4. **What's Included** — Brief list of components:
    - 16 expert agents (link to `agents/`)
