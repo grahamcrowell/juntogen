@@ -156,8 +156,9 @@ Generate three user-facing documentation files:
 1. **Confirm Installation** — Check version banner:
    ```bash
    claude
-   # Should print: OpenJunto v{version} active — OpenJunto coordination system
+   # Should print on stderr: OpenJunto v{version} active — OpenJunto coordination system
    ```
+   The banner is emitted by the `SessionStart` hook. It appears on **session start** (startup, resume, `/clear`, compaction) — NOT on `/reload-plugins` or `/plugin reload` (plugin reload refreshes skills/agents/hooks in-process but does not re-fire `SessionStart`). After installing or reloading the plugin, start a new session (or `/clear`) to see the banner. `{version}` is read from the plugin package's `VERSION` file.
 
 2. **Your First Task** — Start with something where multi-perspective review adds obvious value:
    - "Review this file for security issues: src/auth/token_validator.go"

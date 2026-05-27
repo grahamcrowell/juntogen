@@ -183,11 +183,16 @@ Permissions are coarse-grained safety rails. Fine-grained control (don't edit co
 
 Lifecycle hooks called by Claude Code at specific events.
 
+<a id="hook-conductor-inject"></a>
+
 **SessionStart**:
 - Matcher: `""` (matches all sessions)
-- Command: `version=$(cat ~/.claude/.oj-version 2>/dev/null || echo 'unknown'); echo "OpenJunto v${version} active — OpenJunto coordination system" >&2`
+- Command: `${CLAUDE_PLUGIN_ROOT}/bin/oj-helper conductor-inject` (the SessionStart hook fires only on session start — startup, resume, `/clear`, compaction — not on plugin reload)
 - Timeout: 5 seconds
-- Purpose: Print version banner at session start (stderr, doesn't interfere with conversation)
+- Purpose: Inject the manager protocol file (`CONDUCTOR.md`) as `additionalContext` on stdout, AND print a version banner to stderr. The banner is emitted by `conductor-inject` itself (see the conductor-inject subcommand in step-07), not by an inline shell snippet.
+  - Banner text (stable, user-facing): `OpenJunto v${version} active — OpenJunto coordination system`
+  - `${version}` is read from the plugin package's `VERSION` file (`${CLAUDE_PLUGIN_ROOT}/VERSION`), falling back to `unknown`. The Makefile-era `~/.claude/.oj-version` file is **not** read — it is a legacy artifact detected by `migrate-legacy`.
+  - The banner goes to **stderr only**; stdout carries the JSON `additionalContext` payload and must not be polluted.
 
 **SubagentStart**:
 - Matcher: `"general-purpose"` [EXTERNAL] (only general-purpose agents) — resolve from `platform-snapshot.yaml` → `hooks[point="SubagentStart"].matchers[0]`

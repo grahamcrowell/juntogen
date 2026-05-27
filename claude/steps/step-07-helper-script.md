@@ -56,6 +56,7 @@ die()   { echo "ERROR: $*" >&2; exit 1; }
 - **Contracts source (load-bearing)**: ALL subcommands MUST be able to reference shared pinned-string constants (e.g., `OJ_STDERR_CONDUCTOR_MISSING`) from `bin/lib/contracts.sh`. The script header MUST `source` `lib/contracts.sh` with die-on-fail (see header block above). The contracts file is statically emitted by the generator — DO NOT inline-redefine the constants; sourcing failure must be fatal so drift is caught immediately.
 - `debug()` function — controlled by `OJ_HOOK_DEBUG=1` env var (legacy `JUNTO_HOOK_DEBUG` accepted as fallback), writes to stderr
 - `die()` function — fatal error with message to stderr, exits with code 1
+- **Shared version helper `_oj_plugin_version()`** (define once, near the top after `die`): resolves the plugin version string for the SessionStart banner AND the migrate-legacy sentinel. Resolution: prefer `${CLAUDE_PLUGIN_ROOT}/VERSION`; fall back to script-relative `../VERSION` (`$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/../VERSION`) for non-plugin-host invocations; fall back to the literal `unknown` if no readable VERSION file is found. Read with `head -1 ... | tr -d '[:space:]'`. DO NOT read the Makefile-era `~/.claude/.oj-version` file — that artifact belongs to the pre-plugin era and is what `migrate-legacy` detects. `migrate-legacy`'s `_migrate_plugin_version` MUST delegate to this shared helper (thin alias) rather than duplicate the resolution logic.
 
 ### Subcommand Functions
 
@@ -137,6 +138,13 @@ Implement these subcommands (in order). The list below enumerates ALL 11 subcomm
 
 **Critical implementation details**:
 
+0. **Version banner (FIRST, stderr-only)**: Before the jq check, emit the SessionStart version banner via a small helper (`_conductor_emit_banner`). The banner confirms OpenJunto is active and MUST fire on EVERY conductor-inject path (including the degraded missing-jq and missing-CONDUCTOR paths), so adopters always get the "active" signal.
+   - Exact text (stable, user-facing — keep byte-identical to F16-architecture.md § SessionStart Hook; the em-dash is intentional):
+     ```
+     OpenJunto v$(_oj_plugin_version) active — OpenJunto coordination system
+     ```
+   - Write to **stderr only** (`>&2`). The hook's stdout carries the JSON `additionalContext` payload; a stray stdout byte would corrupt it. jq is NOT required for the banner.
+   - The version comes from the shared `_oj_plugin_version()` helper (plugin `VERSION`, `unknown` fallback) — NOT from the Makefile-era `~/.claude/.oj-version` file.
 1. **jq is required for safe JSON encoding**. If `command -v jq` fails, emit an actionable stderr line AND a hardcoded empty JSON envelope, then `return 0`:
    ```
    "OpenJunto: jq required for CONDUCTOR injection; install via `brew install jq` or equivalent" >&2
@@ -149,7 +157,7 @@ Implement these subcommands (in order). The list below enumerates ALL 11 subcomm
    - Emit `${OJ_STDERR_CONDUCTOR_MISSING}` to stderr (this variable is sourced from `lib/contracts.sh` — DO NOT inline-hardcode the literal; the contracts library is the source of truth, and the validator's drift canary greps `bin/oj-helper` for a reference to the variable name, not a copy of the string).
    - Emit hardcoded empty JSON envelope via `_conductor_emit_empty_json`.
    - `return 0`.
-5. **CONDUCTOR.md present but empty** (`! -s`): silently emit empty JSON envelope (legitimate adopter state — manager protocol intentionally disabled); no stderr.
+5. **CONDUCTOR.md present but empty** (`! -s`): emit empty JSON envelope; emit NO CONDUCTOR advisory (legitimate adopter state — manager protocol intentionally disabled). Note: the version banner from step 0 still fires on stderr (it is an active-confirmation signal, not a warning about CONDUCTOR); only the `OJ_STDERR_CONDUCTOR_MISSING` advisory is suppressed here.
 6. **CONDUCTOR.md present and non-empty**: use `jq -n --rawfile body <path>` to load content safely:
    ```bash
    jq --rawfile body "$conductor_path" -n '{
@@ -161,7 +169,7 @@ Implement these subcommands (in order). The list below enumerates ALL 11 subcomm
    ```
    For older jq versions lacking `--rawfile`, fall back to `jq -Rs '...' < "$conductor_path"`.
 
-**Graceful degradation summary**: every path exits 0 with a valid JSON envelope. Never `die`. Never emit malformed JSON. The hook timeout is 5s; pathologically slow paths must not block past that.
+**Graceful degradation summary**: every path emits the version banner to stderr (step 0) and exits 0 with a valid JSON envelope on stdout. Never `die`. Never emit malformed JSON. Never write the banner (or any non-JSON) to stdout. The hook timeout is 5s; pathologically slow paths must not block past that.
 
 **Why this matters**: `hooks/hooks.json` wires `${CLAUDE_PLUGIN_ROOT}/bin/oj-helper conductor-inject` on SessionStart. If the dispatcher does not recognize `conductor-inject`, every Claude Code session prints "Unknown subcommand" and starts without the manager protocol — silently broken.
 
@@ -378,6 +386,10 @@ After generation, verify the script:
    - `grep -E "^cmd_conductor_inject\(\)" bin/oj-helper` → 1 hit
    - `grep -E "^cmd_migrate_legacy\(\)" bin/oj-helper` → 1 hit
 5. **Pinned-string reference**: `grep "OJ_STDERR_CONDUCTOR_MISSING" bin/oj-helper` → ≥1 hit (used in `cmd_conductor_inject`).
+5a. **Version banner**: `cmd_conductor_inject` emits `OpenJunto v<version> active — OpenJunto coordination system` to stderr on every path, sourcing the version from `_oj_plugin_version`. Verify the banner string and that it is stderr-only:
+   - `grep -F 'active — OpenJunto coordination system' bin/oj-helper` → ≥1 hit
+   - `grep -E '^_oj_plugin_version\(\)' bin/oj-helper` → 1 hit (shared helper defined)
+   - Runtime: `CLAUDE_PLUGIN_ROOT=<plugin> bin/oj-helper conductor-inject 2>/dev/null | jq -e .` succeeds (stdout is pure JSON, no banner leakage) AND the banner appears when stderr is captured.
 6. **Argument parsing**: Each subcommand correctly parses flags with `while [[ $# -gt 0 ]]` loop
 7. **Error handling**: Calls `die()` on missing required flags or invalid input
 8. **Graceful degradation**: inject-profile and conductor-inject exit 0 (with valid JSON envelope where applicable) when jq missing, transcript unavailable, profile not found, or CONDUCTOR.md missing

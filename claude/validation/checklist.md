@@ -439,7 +439,7 @@ Count verification:
 - [ ] Deny list includes `rm -rf /*` and `git push --force`
 
 ### Hooks
-- [ ] SessionStart hook prints version banner to stderr
+- [ ] SessionStart hook calls `oj-helper conductor-inject`, which injects CONDUCTOR.md as `additionalContext` (stdout JSON) AND prints the version banner to stderr (banner is stderr-only; version read from plugin `VERSION`, not `.oj-version`)
 - [ ] SessionStart hook timeout: 5 seconds
 - [ ] SubagentStart hook calls `oj-helper inject-profile`
 - [ ] SubagentStart hook matcher: "general-purpose"

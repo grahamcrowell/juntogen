@@ -43,13 +43,22 @@ Manual functional test procedures for critical system paths in an OpenJunto syst
 1. Start a new Claude Code session: `claude` (or `npx @claude/cli`)
 2. Observe stderr output before first prompt
 
+> The banner is emitted by `oj-helper conductor-inject` (the SessionStart hook), which also injects CONDUCTOR.md on stdout. `{VERSION}` is read from the plugin package's `VERSION` file. The SessionStart hook fires on session start (startup/resume/`/clear`/compaction) — NOT on `/reload-plugins` or `/plugin reload`. To re-observe the banner after a plugin reload, start a new session.
+
 **Expected Results**:
-- [ ] Version banner displays: "OpenJunto v{VERSION} active — OpenJunto coordination system"
-- [ ] Banner appears on stderr (not in conversation)
+- [ ] Version banner displays: "OpenJunto v{VERSION} active — OpenJunto coordination system" (where `{VERSION}` matches the plugin `VERSION` file)
+- [ ] Banner appears on stderr (not in conversation, not on stdout)
+- [ ] stdout carries valid SessionStart JSON with non-empty `additionalContext` (the injected CONDUCTOR.md)
 - [ ] Claude Code prompt appears normally after banner
 - [ ] No error messages
 
-**Pass Criteria**: Version banner displays correctly without errors.
+**Direct hook check** (independent of a live session):
+```bash
+CLAUDE_PLUGIN_ROOT=/path/to/oj-claude /path/to/oj-claude/bin/oj-helper conductor-inject 2>/tmp/banner.err | jq -e '.hookSpecificOutput.additionalContext | length > 0'
+cat /tmp/banner.err   # → OpenJunto v<version> active — OpenJunto coordination system
+```
+
+**Pass Criteria**: Version banner displays correctly on stderr with the real plugin version, stdout remains valid JSON with non-empty additionalContext, no errors.
 
 ---
 
