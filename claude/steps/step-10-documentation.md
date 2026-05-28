@@ -34,12 +34,18 @@ Generate three user-facing documentation files:
 
 1. **One-line summary** — "A Claude Code configuration that transforms the AI into a coordinated team of 16 expert sub-agents with structured peer review."
 
-2. **Quickstart** — Installation in 3 commands:
-   ```bash
-   git clone <repo-url>
-   cd junto
-   make install
-   ```
+2. **Quickstart** — Plugin-host-mediated install (no build step, no `make install`). Match the live `oj-claude/README.md` Quickstart section:
+   - **Primary path** (marketplace install from inside a Claude Code session):
+     ```
+     /plugin marketplace add openjunto/oj-claude
+     /plugin install oj@openjunto
+     ```
+     Then "start a new Claude Code session (restart, or `/clear`) to load the plugin" — use this POST-PR#3 wording. Do NOT emit `/reload-plugins` as the post-install action (the `SessionStart` hook does not re-fire on `/reload-plugins`, so the banner would not appear and the manager protocol would not be re-injected).
+   - **Local-iteration variant** (for working on the plugin without installing):
+     ```bash
+     git clone https://github.com/openjunto/oj-claude.git
+     claude --plugin-dir ./oj-claude
+     ```
 
 3. **Usage** — Show how to put OpenJunto to work: the manager protocol loads at session start; the user invokes a coordinated cycle with `/oj:cycle <task>` (or `/oj:run-task` for a backlog item). Examples:
    - "/oj:cycle Review this pull request for security issues."
@@ -160,8 +166,8 @@ Generate three user-facing documentation files:
    ```
    The banner is emitted by the `SessionStart` hook. It appears on **session start** (startup, resume, `/clear`, compaction) — NOT on `/reload-plugins` or `/plugin reload` (plugin reload refreshes skills/agents/hooks in-process but does not re-fire `SessionStart`). After installing or reloading the plugin, start a new session (or `/clear`) to see the banner. `{version}` is read from the plugin package's `VERSION` file.
 
-2. **Your First Task** — Start with something where multi-perspective review adds obvious value:
-   - "Review this file for security issues: src/auth/token_validator.go"
+2. **Your First Task** — Start with something where multi-perspective review adds obvious value. The example MUST be prefixed with `/oj:cycle ` (the explicit-invocation activation model — manager triage engages only on coordinated-cycle command invocations, not free-form messages):
+   - `/oj:cycle Review this file for security issues: src/auth/token_validator.go`
    - Observe: Manager triages, spawns Security Engineer and Distinguished Engineer, synthesizes findings
 
 3. **Understanding Triage** — The system scores requests against 4 criteria:
@@ -217,7 +223,8 @@ Generate three user-facing documentation files:
 After generating all three files, verify:
 
 1. **README.md**:
-   - Installation is plugin-host-mediated (no `make install` — plugin host handles install at user opt-in)
+   - Installation is plugin-host-mediated. **Negative**: README MUST NOT contain `make install`. **Positive**: README Quickstart MUST contain BOTH `/plugin marketplace add openjunto/oj-claude` AND `/plugin install oj@openjunto` (the marketplace-install flow shipped in PR #3). **Negative**: README MUST NOT instruct the user to `/reload-plugins` after install — the correct post-install action is "start a new Claude Code session (restart, or `/clear`)".
+   - **Positive**: README Usage examples MUST be prefixed with `/oj:cycle ` (the explicit-invocation activation model). At least one example MUST also mention `/oj:run-task` as the single-item alternative.
    - Usage examples are concrete (not abstract)
    - Directory structure shows the plugin tree (`agents/`, `templates/`, `skills/`, `reference/`, `CONDUCTOR.md` at plugin root) and the `.claude/` per-project layout
    - Links to WHY.md and onboarding.md
@@ -231,6 +238,7 @@ After generating all three files, verify:
 3. **docs/onboarding.md**:
    - Confirms installation with version banner check
    - First task is concrete and shows triage in action
+   - **Positive**: the "Your First Task" example MUST be prefixed with `/oj:cycle ` (e.g., `/oj:cycle Review this file for security issues: src/auth/token_validator.go`) — matches the live `oj-claude/docs/onboarding.md` post-PR#4. A bare unprefixed example is a fidelity bug.
    - Triage model explained (4 criteria, 0-1/2-3/4 scoring)
    - Common mistakes section exists
    - Links to next steps (WHY.md, CLAUDE.md, agents/index.md)
