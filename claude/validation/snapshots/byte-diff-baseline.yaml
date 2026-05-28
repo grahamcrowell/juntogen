@@ -12,7 +12,7 @@
 #
 # DO NOT edit by hand — regenerate via:
 #   bash juntogen/claude/lib/emit-static-plugin-manifest.sh --all /tmp/baseline-regen 0.0.2
-#   shasum -a 256 /tmp/baseline-regen/{.claude-plugin/plugin.json,hooks/hooks.json,bin/lib/contracts.sh,platform-defaults.yaml}
+#   shasum -a 256 /tmp/baseline-regen/{.claude-plugin/plugin.json,.claude-plugin/marketplace.json,hooks/hooks.json,bin/lib/contracts.sh,platform-defaults.yaml}
 #
 # Consistency invariant (asserted by byte-diff-baseline-consistency-test.sh
 # per BL-025-m.3 M1 amendment): for every entry, the recorded sha256 MUST
@@ -32,6 +32,10 @@ entries:
     class: data
     sha256: "a4578f51e28c9a173e1bd64cf8b517041fe5dc4111f0c12c916f72ab0d5e21c5"
     provenance: emit_plugin_json
+  - path: ".claude-plugin/marketplace.json"
+    class: data
+    sha256: "b66f98ee7318e68e03582efc282d78668bbbad3dfd00900efe35292f3934482e"
+    provenance: emit_marketplace_json
   - path: "hooks/hooks.json"
     class: data
     sha256: "0aced834378ce3d55b40a9d8aafc9a366ac32f2cd5e7b8f663b883f9b9052609"

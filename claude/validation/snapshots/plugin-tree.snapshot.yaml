@@ -24,6 +24,7 @@ output_classes_ref: "juntospec/platform-contract.yaml#output_classes"
 
 # Layer 1: file-set — sorted list of every tracked path in oj-claude/
 files:
+  - ".claude-plugin/marketplace.json"
   - ".claude-plugin/plugin.json"
   - ".claude/CLAUDE.md"
   - ".githooks/commit-msg"

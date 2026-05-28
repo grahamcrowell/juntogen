@@ -4,7 +4,8 @@
 # static-emit DATA helper.
 #
 # PURPOSE: Freeze the byte-exact output of emit_plugin_json,
-# emit_hooks_json, and emit_contracts_sh against fixtures stored at
+# emit_marketplace_json, emit_hooks_json, emit_contracts_sh, and
+# emit_platform_defaults against fixtures stored at
 # juntogen/claude/validation/fixtures/plugin-manifest/. Any drift in the
 # emit helper — heredoc edit, jq invocation change, or wrong key order —
 # fails this test loudly BEFORE the m.3 byte-diff gate runs.
@@ -20,8 +21,10 @@
 # baseline at freeze time).
 #
 # FIXTURES (frozen 2026-05-12 BL-025-m.2 from oj-claude baseline;
-# plugin.json + platform-defaults.yaml refreshed 2026-05-13 BL-025-m.3):
+# plugin.json + platform-defaults.yaml refreshed 2026-05-13 BL-025-m.3;
+# marketplace.json frozen with regen-pipeline wiring at v0.0.2):
 #   juntogen/claude/validation/fixtures/plugin-manifest/plugin.json
+#   juntogen/claude/validation/fixtures/plugin-manifest/marketplace.json
 #   juntogen/claude/validation/fixtures/plugin-manifest/hooks.json
 #   juntogen/claude/validation/fixtures/plugin-manifest/contracts.sh
 #   juntogen/claude/validation/fixtures/plugin-manifest/platform-defaults.yaml
@@ -29,13 +32,15 @@
 # Test scenarios:
 #   1. POSITIVE — emit_plugin_json /tmp/td 0.0.2 produces a file whose
 #      sha256 equals the frozen plugin.json fixture's sha256.
-#   2. POSITIVE — emit_hooks_json /tmp/td produces a file whose sha256
+#   2. POSITIVE — emit_marketplace_json /tmp/td produces a file whose sha256
+#      equals the frozen marketplace.json fixture's sha256.
+#   3. POSITIVE — emit_hooks_json /tmp/td produces a file whose sha256
 #      equals the frozen hooks.json fixture's sha256.
-#   3. POSITIVE — emit_contracts_sh /tmp/td produces a file whose sha256
+#   4. POSITIVE — emit_contracts_sh /tmp/td produces a file whose sha256
 #      equals the frozen contracts.sh fixture's sha256.
-#   4. POSITIVE — emit_platform_defaults /tmp/td produces a file whose
+#   5. POSITIVE — emit_platform_defaults /tmp/td produces a file whose
 #      sha256 equals the frozen platform-defaults.yaml fixture's sha256.
-#   5-7. IDEMPOTENCY — running each emit twice into the same dir produces
+#   6-10. IDEMPOTENCY — running each emit twice into the same dir produces
 #      the same sha256 (re-emit must be a no-op effectively).
 #
 # Output format (matches existing -test.sh harness pattern):
@@ -62,7 +67,7 @@ fi
 
 [ -f "${HELPER}" ]      || { echo -e "${RED}ERROR${NC} emit helper not found: ${HELPER}" >&2; exit 2; }
 [ -d "${FIXTURE_DIR}" ] || { echo -e "${RED}ERROR${NC} fixture dir not found: ${FIXTURE_DIR}" >&2; exit 2; }
-for f in plugin.json hooks.json contracts.sh platform-defaults.yaml; do
+for f in plugin.json marketplace.json hooks.json contracts.sh platform-defaults.yaml; do
     [ -f "${FIXTURE_DIR}/${f}" ] || { echo -e "${RED}ERROR${NC} fixture missing: ${FIXTURE_DIR}/${f}" >&2; exit 2; }
 done
 command -v jq      >/dev/null 2>&1 || { echo -e "${RED}ERROR${NC} jq not on PATH (required by emit helper)" >&2; exit 2; }
@@ -121,27 +126,31 @@ echo
 TD=$(mktemp -d -t emit-fixture-XXXXXX)
 TMPDIRS+=("${TD}")
 emit_plugin_json        "${TD}" "0.0.2" >/dev/null
+emit_marketplace_json   "${TD}"          >/dev/null
 emit_hooks_json         "${TD}"          >/dev/null
 emit_contracts_sh       "${TD}"          >/dev/null
 emit_platform_defaults  "${TD}"          >/dev/null
 
-assert_sha_match "plugin.json            (first emit)" "${TD}/.claude-plugin/plugin.json" "${FIXTURE_DIR}/plugin.json"
-assert_sha_match "hooks.json             (first emit)" "${TD}/hooks/hooks.json"           "${FIXTURE_DIR}/hooks.json"
-assert_sha_match "contracts.sh           (first emit)" "${TD}/bin/lib/contracts.sh"       "${FIXTURE_DIR}/contracts.sh"
-assert_sha_match "platform-defaults.yaml (first emit)" "${TD}/platform-defaults.yaml"     "${FIXTURE_DIR}/platform-defaults.yaml"
+assert_sha_match "plugin.json            (first emit)" "${TD}/.claude-plugin/plugin.json"      "${FIXTURE_DIR}/plugin.json"
+assert_sha_match "marketplace.json       (first emit)" "${TD}/.claude-plugin/marketplace.json" "${FIXTURE_DIR}/marketplace.json"
+assert_sha_match "hooks.json             (first emit)" "${TD}/hooks/hooks.json"                "${FIXTURE_DIR}/hooks.json"
+assert_sha_match "contracts.sh           (first emit)" "${TD}/bin/lib/contracts.sh"            "${FIXTURE_DIR}/contracts.sh"
+assert_sha_match "platform-defaults.yaml (first emit)" "${TD}/platform-defaults.yaml"          "${FIXTURE_DIR}/platform-defaults.yaml"
 
 # Idempotency: re-emit into the same dir must produce the same sha. (Most
 # failure modes here would be timestamps in heredocs or jq output reordering;
 # the helper has none, but lock it.)
 emit_plugin_json        "${TD}" "0.0.2" >/dev/null
+emit_marketplace_json   "${TD}"          >/dev/null
 emit_hooks_json         "${TD}"          >/dev/null
 emit_contracts_sh       "${TD}"          >/dev/null
 emit_platform_defaults  "${TD}"          >/dev/null
 
-assert_sha_match "plugin.json            (re-emit idempotency)" "${TD}/.claude-plugin/plugin.json" "${FIXTURE_DIR}/plugin.json"
-assert_sha_match "hooks.json             (re-emit idempotency)" "${TD}/hooks/hooks.json"           "${FIXTURE_DIR}/hooks.json"
-assert_sha_match "contracts.sh           (re-emit idempotency)" "${TD}/bin/lib/contracts.sh"       "${FIXTURE_DIR}/contracts.sh"
-assert_sha_match "platform-defaults.yaml (re-emit idempotency)" "${TD}/platform-defaults.yaml"     "${FIXTURE_DIR}/platform-defaults.yaml"
+assert_sha_match "plugin.json            (re-emit idempotency)" "${TD}/.claude-plugin/plugin.json"      "${FIXTURE_DIR}/plugin.json"
+assert_sha_match "marketplace.json       (re-emit idempotency)" "${TD}/.claude-plugin/marketplace.json" "${FIXTURE_DIR}/marketplace.json"
+assert_sha_match "hooks.json             (re-emit idempotency)" "${TD}/hooks/hooks.json"                "${FIXTURE_DIR}/hooks.json"
+assert_sha_match "contracts.sh           (re-emit idempotency)" "${TD}/bin/lib/contracts.sh"            "${FIXTURE_DIR}/contracts.sh"
+assert_sha_match "platform-defaults.yaml (re-emit idempotency)" "${TD}/platform-defaults.yaml"          "${FIXTURE_DIR}/platform-defaults.yaml"
 
 echo
 echo "================================"

@@ -492,8 +492,9 @@ verify_step() {
 # byte-deterministic files alongside the LLM output; the verifier then
 # sees both as a single coherent step output.
 #
-# Currently only step-07 has DATA-class siblings (plugin.json + hooks.json
-# + bin/lib/contracts.sh). The helper functions live in
+# Currently only step-07 has DATA-class siblings (plugin.json +
+# marketplace.json + hooks.json + bin/lib/contracts.sh +
+# platform-defaults.yaml). The helper functions live in
 # lib/emit-static-plugin-manifest.sh — sourced lazily here so the
 # generator startup cost stays unchanged when no static emit fires.
 #
@@ -510,8 +511,9 @@ static_artifacts_emit() {
                 log_error "static_artifacts_emit: helper not found at ${helper}"
                 return 1
             fi
-            # Source the helper to expose emit_plugin_json / emit_hooks_json
-            # / emit_contracts_sh. Sourcing in a subshell would scope the
+            # Source the helper to expose emit_plugin_json /
+            # emit_marketplace_json / emit_hooks_json / emit_contracts_sh /
+            # emit_platform_defaults. Sourcing in a subshell would scope the
             # functions away; the generator script is bash, so sourcing
             # here is safe — the helper declares no top-level state that
             # would conflict with the generator.
@@ -528,6 +530,8 @@ static_artifacts_emit() {
             fi
             emit_plugin_json       "${dir}" "${version}" >/dev/null \
                 || { log_error "static_artifacts_emit: emit_plugin_json failed"; return 1; }
+            emit_marketplace_json  "${dir}"              >/dev/null \
+                || { log_error "static_artifacts_emit: emit_marketplace_json failed"; return 1; }
             emit_hooks_json        "${dir}"              >/dev/null \
                 || { log_error "static_artifacts_emit: emit_hooks_json failed"; return 1; }
             emit_contracts_sh      "${dir}"              >/dev/null \
@@ -542,7 +546,7 @@ static_artifacts_emit() {
             if ! emit_plugin_scripts "${dir}" >/dev/null 2>&1; then
                 log_warn "  emit_plugin_scripts: source not found (OJ_CLAUDE_DIR=${OJ_CLAUDE_DIR:-unset}); skipping"
             fi
-            log_ok "  Static manifests emitted (plugin.json, hooks.json, bin/lib/contracts.sh, platform-defaults.yaml; scripts/ copied if available)"
+            log_ok "  Static manifests emitted (plugin.json, marketplace.json, hooks.json, bin/lib/contracts.sh, platform-defaults.yaml; scripts/ copied if available)"
             ;;
         *)
             # No-op for steps without DATA-class siblings.
