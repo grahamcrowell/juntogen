@@ -1,0 +1,116 @@
+# regen-validate — CI gate for juntogen's regen contract against the
+# pre-generated oj-claude plugin tree.
+#
+# DESIGN: This workflow does NOT regenerate. There is no ANTHROPIC_API_KEY
+# and no `claude` invocation that calls the model. The workflow checks out
+# juntogen + sibling-checks-out openjunto/oj-claude (default-branch HEAD),
+# then runs juntogen's three validation entry-points against the oj-claude
+# tree as OUTPUT_DIR. This catches drift between the genome's expectations
+# (snapshot, byte-diff baseline, tier-a invariants) and what currently
+# lives in oj-claude/, BEFORE a contributor opens a PR that regenerates.
+#
+# Local scripts are the source of truth (BL-025-k F1, m.6 F4). This file
+# is a thin orchestrator — pin the runtime, fetch both trees, guard the
+# sibling checkout, then call the same three scripts a maintainer runs
+# locally with oj-claude/ as the OUTPUT_DIR argument.
+#
+# PIN — @anthropic-ai/claude-code@2.1.138
+#   Kept in lockstep with oj-claude/.github/workflows/plugin-validate.yml.
+#   `claude plugin validate` semantics can shift between 2.1.x versions
+#   (BL-025-k synthesis pre-mortem #4); validators here do not invoke the
+#   model but the CLI is installed defensively so any future inner step
+#   that shells out to `claude --no-claude` style flags resolves the same
+#   binary the plugin-validate workflow does. Bump deliberately — observe
+#   CI on both repos, re-pin in both files in the same change.
+#
+# Triggers: push + pull_request (any branch / any base).
+#
+# DESIGN GUARD: validation steps carry NO continue-on-error. If the
+# sibling oj-claude checkout is missing or shaped wrong, the explicit
+# "Guard sibling oj-claude checkout" step fails loud BEFORE the validators
+# run — converting a silent green-by-coincidence into a hard signal.
+#
+# CHECKOUT-GUARD RATIONALE: actions/checkout for openjunto/oj-claude does
+# NOT carry continue-on-error. With the explicit guard step asserting the
+# checkout is a real plugin tree, letting checkout fail loudly with its
+# native error message is clearer than swallowing the failure and relying
+# on the guard alone. Two failure modes, two distinct error surfaces:
+# (1) checkout fails → actions/checkout reports the network/auth issue;
+# (2) checkout produces an unusable tree → guard step reports the shape
+# violation. Neither is hidden by continue-on-error.
+
+name: regen-validate
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout juntogen
+        uses: actions/checkout@v4
+        with:
+          path: juntogen
+
+      - name: Sibling-checkout openjunto/oj-claude (default-branch HEAD)
+        uses: actions/checkout@v4
+        with:
+          repository: openjunto/oj-claude
+          path: oj-claude
+
+      - name: Guard sibling oj-claude checkout
+        # Fail loud if the checked-out oj-claude tree is missing the
+        # canonical plugin manifest. This converts an empty/wrong-shape
+        # sibling checkout into a hard signal — otherwise the validators
+        # would themselves error in a less obvious place. NO
+        # continue-on-error here: this guard is the gate.
+        run: |
+          set -euo pipefail
+          if [ ! -f "${GITHUB_WORKSPACE}/oj-claude/.claude-plugin/plugin.json" ]; then
+            echo "ERROR: sibling checkout of openjunto/oj-claude did not yield a plugin tree" >&2
+            echo "       (missing ${GITHUB_WORKSPACE}/oj-claude/.claude-plugin/plugin.json)" >&2
+            echo "       Check the sibling-checkout step output above for actions/checkout errors." >&2
+            exit 1
+          fi
+          echo "OK: oj-claude tree present at ${GITHUB_WORKSPACE}/oj-claude"
+
+      - name: Setup Node (for npm install of claude CLI)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install pinned claude CLI
+        # @2.1.138 — must match the pin in
+        # oj-claude/.github/workflows/plugin-validate.yml. Bumping here
+        # without bumping there (or vice versa) drifts the two CI gates
+        # against different CLI semantics. Bump in lockstep, update both
+        # comments, re-run both workflows.
+        run: npm install -g "@anthropic-ai/claude-code@2.1.138"
+
+      - name: Show claude CLI version
+        run: claude --version
+
+      - name: Ensure jq is present
+        # ubuntu-latest ships jq; this is defense-in-depth so a future
+        # runner image change does not silently break the validators.
+        run: command -v jq && jq --version
+
+      - name: Run structural-diff against oj-claude
+        # Expected: 5 layers pass, 0 warnings.
+        run: bash "${GITHUB_WORKSPACE}/juntogen/claude/validation/scripts/structural-diff.sh" "${GITHUB_WORKSPACE}/oj-claude"
+
+      - name: Run tier-a-assertions against oj-claude
+        # Expected: 19 passed / 0 failed.
+        run: bash "${GITHUB_WORKSPACE}/juntogen/claude/validation/scripts/tier-a-assertions.sh" "${GITHUB_WORKSPACE}/oj-claude"
+
+      - name: Run regen-acceptance against oj-claude
+        # Expected: 8/8 suites green. This re-runs structural-diff and
+        # tier-a internally plus the plugin-side test harnesses against
+        # ${OUTPUT_DIR}/scripts/. Treating the pre-generated oj-claude
+        # tree as OUTPUT_DIR exercises the same path-coupling guard the
+        # acceptance gate uses on a fresh regen tree.
+        run: bash "${GITHUB_WORKSPACE}/juntogen/claude/validation/scripts/regen-acceptance.sh" "${GITHUB_WORKSPACE}/oj-claude"
