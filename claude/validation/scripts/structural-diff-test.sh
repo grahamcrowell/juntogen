@@ -34,6 +34,15 @@
 #   8. l5-prose-mutation-ignored — mutate README.md after emit; L5 does
 #                              NOT report it (PROSE-class is out of scope
 #                              of byte-diff)                                -> L5 PASS
+#   9. l1-locale-determinism — run the WHOLE structural-diff under a NON-C
+#                              UTF-8 locale (en_US.UTF-8) and assert L1
+#                              file-set still PASSES. Regression guard for
+#                              the cross-platform `comm` collation bug: the
+#                              live tree's `git ls-files | sort` and the
+#                              snapshot `files:` list must be compared in a
+#                              locale-INDEPENDENT order. Skips gracefully if
+#                              no non-C UTF-8 locale is installed.          -> exit 0,
+#                              L1 PASS, no structural-drift-{added,untracked}
 #
 # Test isolation: each scenario copies the live oj-claude tree to its own
 # tempdir, mutates only that copy, runs structural-diff.sh against it.
@@ -103,6 +112,39 @@ run_diff() {
     RUN_STDOUT=$(cat "${stdout_log}")
     RUN_STDERR=$(cat "${stderr_log}")
     rm -f "${stdout_log}" "${stderr_log}"
+}
+
+# Same as run_diff, but forces a specific LC_ALL locale for the invocation.
+# $1 = locale string, $2 = tree. Used by the locale-determinism regression guard.
+run_diff_with_locale() {
+    local loc="$1" tree="$2"
+    local stdout_log stderr_log
+    stdout_log=$(mktemp -p "${TMPROOT}" stdout-XXXXXX)
+    stderr_log=$(mktemp -p "${TMPROOT}" stderr-XXXXXX)
+    local rc=0
+    LC_ALL="${loc}" bash "${DIFF}" "${tree}" >"${stdout_log}" 2>"${stderr_log}" || rc=$?
+    RUN_EXIT="${rc}"
+    RUN_STDOUT=$(cat "${stdout_log}")
+    RUN_STDERR=$(cat "${stderr_log}")
+    rm -f "${stdout_log}" "${stderr_log}"
+}
+
+# Return the first installed non-C UTF-8 locale (so the regression guard
+# exercises a collation that DIFFERS from the C/byte order the fix pins to).
+# Prints the locale name on stdout and returns 0, or returns 1 if none found.
+first_non_c_utf8_locale() {
+    if ! command -v locale >/dev/null 2>&1; then
+        return 1
+    fi
+    local available cand
+    available=$(locale -a 2>/dev/null) || return 1
+    for cand in en_US.UTF-8 en_US.utf8 C.UTF-8 C.utf8 en_GB.UTF-8 en_GB.utf8; do
+        if printf '%s\n' "${available}" | grep -qixF "${cand}"; then
+            printf '%s' "${cand}"
+            return 0
+        fi
+    done
+    return 1
 }
 
 # Assert: $RUN_EXIT matches expected; stderr contains/absents requested
@@ -309,6 +351,32 @@ scenario_l5_prose_mutation_ignored() {
         absent "byte-diff-data-drift"
 }
 
+# ── Scenario 9: l1-locale-determinism (cross-platform CI regression guard) ─
+# Run the full structural-diff under a NON-C UTF-8 locale and assert L1
+# file-set still PASSES. Before the fix, en_US collation of the live
+# `git ls-files | sort` diverged from the C-collated snapshot order, making
+# `comm` false-flag uppercase root files as both added and untracked. The
+# fix forces LC_ALL=C on both sides of `comm`; this scenario proves L1 is
+# now locale-INDEPENDENT — the harness process locale no longer matters.
+# Skips gracefully (counted as PASS) if no non-C UTF-8 locale is installed.
+scenario_l1_locale_determinism() {
+    local loc
+    if ! loc=$(first_non_c_utf8_locale); then
+        echo "${YELLOW}SKIP${NC} 9. l1-locale-determinism (no non-C UTF-8 locale installed on this runner)"
+        PASS_COUNT=$((PASS_COUNT + 1))
+        return 0
+    fi
+    local td
+    td=$(clone_live_tree "l1-locale")
+    overlay_v002_data_files "${td}"
+    run_diff_with_locale "${loc}" "${td}"
+    assert_pass "9. l1-locale-determinism (full diff under ${loc}, L1 still PASS)" "0" \
+        stdout_contains "PASS L1" \
+        absent "structural-drift-added-file" \
+        absent "structural-drift-untracked-file" \
+        absent "structural-drift-missing-file"
+}
+
 echo "${YELLOW}[INFO]${NC} BL-025-m.3 structural-diff.sh L4+L5 negative-control harness"
 echo "${YELLOW}[INFO]${NC} validator: ${DIFF}"
 echo "${YELLOW}[INFO]${NC} live tree: ${LIVE_TREE}"
@@ -322,6 +390,7 @@ scenario_l5_positive_emit_tree
 scenario_l5_mutated_plugin_json
 scenario_l5_missing_data_file
 scenario_l5_prose_mutation_ignored
+scenario_l1_locale_determinism
 
 echo
 echo "================================"

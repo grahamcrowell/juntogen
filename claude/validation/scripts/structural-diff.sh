@@ -205,7 +205,15 @@ check_layer_1_file_set() {
     # files that are tracked but missing from the working tree.
     local live_tracked
     live_tracked=$(mktemp -t snapshot-live-tracked-XXXXXX)
-    (cd "${PLUGIN_ROOT}" && git ls-files | sort) > "${live_tracked}"
+    # Cross-platform CI determinism: `comm` requires both inputs collated
+    # identically. `sort` is locale-dependent — en_US collates uppercase root
+    # files (CHANGELOG.md, LICENSE, …) interleaved with lowercase nested paths,
+    # but a C/byte-order locale (e.g. GitHub Linux runners) sorts them to the
+    # top. A mismatch makes `comm` false-flag those files as BOTH added and
+    # untracked. Force LC_ALL=C on the live list AND re-collate the snapshot
+    # list (whatever order it was stored in) so both sides are byte-ordered.
+    (cd "${PLUGIN_ROOT}" && git ls-files | LC_ALL=C sort) > "${live_tracked}"
+    LC_ALL=C sort -o "${expected}" "${expected}"
 
     local rc=0
 
@@ -265,7 +273,13 @@ check_layer_2_manifest_keys() {
         local expected_keys live_keys
         expected_keys=$(snapshot_list "plugin_json_keys")
         live_keys=$(mktemp -t plugin-live-keys-XXXXXX)
-        jq -r 'keys[]' "${plugin_json}" | sort > "${live_keys}"
+        # Defense in depth (same locale-collation hazard as L1): `diff` of two
+        # sorted lists requires identical collation. Force LC_ALL=C on the live
+        # sort and re-collate the snapshot-derived expected list. plugin.json
+        # keys are currently all-lowercase (so en_US == C today), but this keeps
+        # the comparison robust if an uppercase/mixed-case key is ever added.
+        jq -r 'keys[]' "${plugin_json}" | LC_ALL=C sort > "${live_keys}"
+        LC_ALL=C sort -o "${expected_keys}" "${expected_keys}"
         if ! diff -q "${expected_keys}" "${live_keys}" >/dev/null 2>&1; then
             fail "manifest-keys-plugin-json-drift" ".claude-plugin/plugin.json" 0 \
                 "plugin.json keys differ from snapshot (diff: $(diff "${expected_keys}" "${live_keys}" 2>/dev/null | head -5 | tr '\n' ' '))"
