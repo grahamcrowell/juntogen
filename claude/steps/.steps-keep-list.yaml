@@ -163,35 +163,47 @@ keep_list:
     reason: "convene-fallback-binding"
     note: "Fallback constraint: 'no SendMessage / Inform — that primitive is gated by the same capability as Convene'. Platform-fact reference justifying handback-only synthesis."
   - file: "step-06-commands.md"
-    line: 82
+    line: 67
+    term: "TeamCreate"
+    match_kind: "literal"
+    reason: "convene-fallback-binding"
+    note: "Runtime-backstop sub-bullet (cycle skill): 'if the team branch is taken and the first TeamCreate call — or any agent-teams-gated tool (TeamCreate, TeamDelete, SendMessage, shutdown_request) — raises Unknown tool at runtime'. Platform-fact enumeration of tools whose runtime failure triggers the fallback."
+  - file: "step-06-commands.md"
+    line: 67
+    term: "SendMessage"
+    match_kind: "literal"
+    reason: "convene-fallback-binding"
+    note: "Same runtime-backstop sub-bullet — SendMessage listed in the gated-tools enumeration whose runtime failure triggers the fallback."
+  - file: "step-06-commands.md"
+    line: 83
     term: "SubagentStart"
     match_kind: "literal"
     reason: "teardown-binding"
     note: "health-check skill frontmatter description: 'SubagentStart hook wiring' — the skill's stated diagnostic surface. Platform-fact reference identifying the hook contract under test."
   - file: "step-06-commands.md"
-    line: 94
+    line: 95
     term: "SubagentStart"
     match_kind: "literal"
     reason: "teardown-binding"
     note: "health-check skill body Probe 5: 'SubagentStart hook wiring (`hooks/hooks.json` matcher inspection)'. Platform-fact reference to the live hook contract Probe 5 inspects."
   - file: "step-06-commands.md"
-    line: 113
+    line: 114
     term: "TeamCreate"
     match_kind: "literal"
     reason: "convene-fallback-binding"
-    note: "run-task Phase 3 fallback selector: '.available == true proceeds with TeamCreate, .available == false follows the deputy-coordinator parallel-Consult fan-out'. Platform-fact reference to the branched-between tool."
+    note: "run-task Phase 3 fallback selector + runtime-backstop: '.available == true proceeds with TeamCreate... if the first TeamCreate call... raises Unknown tool at runtime, fall through'. Platform-fact reference to the branched-between tool and the runtime-failure trigger."
   - file: "step-06-commands.md"
-    line: 113
+    line: 114
     term: "Task tool"
     match_kind: "literal"
     reason: "convene-fallback-binding"
     note: "run-task Phase 3 fallback: 'one general-purpose deputy spawned via Task tool, briefed with the full stakeholder plan; fans out parallel Task-tool Consults'. Platform-fact reference to the substitute spawn primitive."
   - file: "step-06-commands.md"
-    line: 113
+    line: 114
     term: "SendMessage"
     match_kind: "literal"
     reason: "convene-fallback-binding"
-    note: "run-task Phase 3 fallback: 'handback-only synthesis — no SendMessage / Inform, no TeamCreate, no TeamDelete'. Platform-fact enumeration of unavailable tools in the degraded path."
+    note: "run-task Phase 3 fallback: 'handback-only synthesis — no SendMessage / Inform, no TeamCreate, no TeamDelete' + runtime-backstop gated-tools enumeration. Platform-fact reference."
 
   # ── step-07: oj-helper inject-profile contract ──────────────────────
   - file: "step-07-helper-script.md"
@@ -302,11 +314,23 @@ keep_list:
     reason: "convene-fallback-binding"
     note: "Fallback synthesis note: 'no inter-agent SendMessage relay'. Platform-fact justifying handback-only synthesis."
   - file: "step-01-scaffold-and-protocol.md"
-    line: 282
+    line: 281
     term: "TeamCreate"
     match_kind: "literal"
     reason: "convene-fallback-binding"
-    note: "Fallback rationale: 'adopters... hit Unknown tool: TeamCreate at the Complex-tier execution step instead of falling through'. Platform-fact reference to the missing-tool error mode the fallback prevents."
+    note: "Runtime-backstop bullet: 'if the team branch is taken and the first TeamCreate call — or any agent-teams-gated tool (TeamCreate, TeamDelete, SendMessage, shutdown_request) — raises Unknown tool at runtime, the manager MUST NOT abort the item'. Platform-fact enumeration of tools whose runtime failure triggers the fallback."
+  - file: "step-01-scaffold-and-protocol.md"
+    line: 281
+    term: "SendMessage"
+    match_kind: "literal"
+    reason: "convene-fallback-binding"
+    note: "Same runtime-backstop bullet — SendMessage in the gated-tools enumeration whose runtime failure triggers the fallback."
+  - file: "step-01-scaffold-and-protocol.md"
+    line: 283
+    term: "TeamCreate"
+    match_kind: "literal"
+    reason: "convene-fallback-binding"
+    note: "Fallback rationale: 'adopters... hit Unknown tool: TeamCreate at the Complex-tier execution step instead of falling through... without the backstop the User Checkpoint promised at triage would silently die when TeamCreate raises mid-Complex'. Platform-fact reference to the missing-tool error mode."
 
   # ── step-08: RETIRED (BL-025-m.1) ───────────────────────────────────
   # Makefile installer obsolete in plugin form. step-08-installer.md
