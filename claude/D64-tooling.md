@@ -155,7 +155,7 @@ consumers:
 Environment variables set for all Claude Code sessions.
 
 **OpenJunto-specific env vars**:
-- `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` — Enables TeamCreate/TeamDelete tools (required for Complex tier)
+- `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` — Enables TeamCreate/TeamDelete tools (preferred substrate for Complex tier). When unset, Complex tier degrades gracefully to a deputy-coordinator parallel-Task-tool fan-out (Convene→Consult fallback per Axiom 8; SendMessage/Inform is also unavailable in this mode, so synthesis is handback-only). Adopters and skills detect availability via `oj-helper agent-teams-check`, which reports `{"ok":true,"available":true|false,"reason":"env"|"env_unset"}` and **always exits 0** (Axiom 8: never block on the probe itself).
 - `CLAUDE_CODE_ENABLE_UNIFIED_READ_TOOL=1` — Unified read capability across file types
 - `CLAUDE_CODE_EXPERIMENTAL_ADAPTIVE_THINKING=1` — Adaptive thinking mode
 

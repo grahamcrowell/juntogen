@@ -41,6 +41,16 @@
 #   teardown-binding            — step-06 Convene primitive teardown call
 #                                 (shutdown_request / TeamDelete)
 #   platform-fact-env-var-doc   — step-09:52 env-var documentation
+#   convene-fallback-binding    — step-01/step-06/step-07 prose documenting
+#                                 the Convene→Consult fallback path (Axiom 8).
+#                                 The fallback explicitly enumerates the
+#                                 platform tools that ARE unavailable when
+#                                 the agent-teams substrate is off (TeamCreate,
+#                                 TeamDelete, SendMessage) and the tool that
+#                                 REPLACES them in the degraded path
+#                                 (Task tool, used as the deputy-coordinator
+#                                 spawn primitive). Each occurrence is a
+#                                 platform-fact reference, not spec vocabulary.
 
 keep_list:
   # ── step-00: Platform capability ingestion ──────────────────────────
@@ -129,17 +139,59 @@ keep_list:
     reason: "teardown-binding"
     note: "Convene primitive teardown call sequence (shutdown_request → TeamDelete) — platform-fact reference describing the literal Claude Code tool used to dispose a team. Parallel to the M16 §3 capability-schema exemption pattern."
   - file: "step-06-commands.md"
-    line: 78
+    line: 64
+    term: "TeamCreate"
+    match_kind: "literal"
+    reason: "convene-fallback-binding"
+    note: "Convene→Consult fallback selector: 'when .available == true: proceed with TeamCreate as the existing Complex branch describes'. Platform-fact reference to the tool the fallback selector branches between."
+  - file: "step-06-commands.md"
+    line: 65
+    term: "Task tool"
+    match_kind: "literal"
+    reason: "convene-fallback-binding"
+    note: "Fallback execution: 'spawn ONE general-purpose deputy coordinator via the Task tool, brief it with the full stakeholder plan; the deputy spawns the stakeholder analyses as parallel Task-tool calls'. Platform-fact reference to the substitute spawn primitive when TeamCreate is unavailable."
+  - file: "step-06-commands.md"
+    line: 65
+    term: "TeamCreate"
+    match_kind: "literal"
+    reason: "convene-fallback-binding"
+    note: "Fallback constraint: 'NO TeamCreate, NO TeamDelete, NO shutdown_request in this branch'. Platform-fact enumeration of the tools that MUST NOT be called when agent-teams is off."
+  - file: "step-06-commands.md"
+    line: 65
+    term: "SendMessage"
+    match_kind: "literal"
+    reason: "convene-fallback-binding"
+    note: "Fallback constraint: 'no SendMessage / Inform — that primitive is gated by the same capability as Convene'. Platform-fact reference justifying handback-only synthesis."
+  - file: "step-06-commands.md"
+    line: 82
     term: "SubagentStart"
     match_kind: "literal"
     reason: "teardown-binding"
     note: "health-check skill frontmatter description: 'SubagentStart hook wiring' — the skill's stated diagnostic surface. Platform-fact reference identifying the hook contract under test."
   - file: "step-06-commands.md"
-    line: 90
+    line: 94
     term: "SubagentStart"
     match_kind: "literal"
     reason: "teardown-binding"
     note: "health-check skill body Probe 5: 'SubagentStart hook wiring (`hooks/hooks.json` matcher inspection)'. Platform-fact reference to the live hook contract Probe 5 inspects."
+  - file: "step-06-commands.md"
+    line: 113
+    term: "TeamCreate"
+    match_kind: "literal"
+    reason: "convene-fallback-binding"
+    note: "run-task Phase 3 fallback selector: '.available == true proceeds with TeamCreate, .available == false follows the deputy-coordinator parallel-Consult fan-out'. Platform-fact reference to the branched-between tool."
+  - file: "step-06-commands.md"
+    line: 113
+    term: "Task tool"
+    match_kind: "literal"
+    reason: "convene-fallback-binding"
+    note: "run-task Phase 3 fallback: 'one general-purpose deputy spawned via Task tool, briefed with the full stakeholder plan; fans out parallel Task-tool Consults'. Platform-fact reference to the substitute spawn primitive."
+  - file: "step-06-commands.md"
+    line: 113
+    term: "SendMessage"
+    match_kind: "literal"
+    reason: "convene-fallback-binding"
+    note: "run-task Phase 3 fallback: 'handback-only synthesis — no SendMessage / Inform, no TeamCreate, no TeamDelete'. Platform-fact enumeration of unavailable tools in the degraded path."
 
   # ── step-07: oj-helper inject-profile contract ──────────────────────
   - file: "step-07-helper-script.md"
@@ -149,65 +201,112 @@ keep_list:
     reason: "inject-profile-binding"
     note: "Spec input note: hooks[point=SubagentStart].matchers[0] used as agent type filter in inject-profile."
   - file: "step-07-helper-script.md"
-    line: 62
+    line: 63
     term: "SubagentStart"
     match_kind: "literal"
     reason: "inject-profile-binding"
     note: "Subcommand-enumeration prose: lists SessionStart/SubagentStart hooks wired to the three hook-bearing subcommands."
   - file: "step-07-helper-script.md"
-    line: 66
+    line: 67
     term: "SubagentStart"
     match_kind: "literal"
     reason: "inject-profile-binding"
     note: "Enumeration row: 'cmd_inject_profile — SubagentStart hook (§1)'."
   - file: "step-07-helper-script.md"
-    line: 78
+    line: 80
     term: "SubagentStart"
     match_kind: "literal"
     reason: "inject-profile-binding"
     note: "Subcommand heading: 'inject-profile — SubagentStart Hook'."
   - file: "step-07-helper-script.md"
-    line: 82
+    line: 84
     term: "SubagentStart"
     match_kind: "literal"
     reason: "inject-profile-binding"
     note: "Invocation note: Called by Claude Code's SubagentStart hook."
   - file: "step-07-helper-script.md"
-    line: 86
+    line: 88
     term: "SubagentStart"
     match_kind: "literal"
     reason: "inject-profile-binding"
     note: "[EXTERNAL] block: agent type filter resolved from hooks[point=SubagentStart].matchers[0]."
   - file: "step-07-helper-script.md"
-    line: 90
+    line: 92
     term: "SubagentStart"
     match_kind: "literal"
     reason: "inject-profile-binding"
     note: "Filter step: 'matching the SubagentStart hook matcher'."
   - file: "step-07-helper-script.md"
-    line: 109
+    line: 111
     term: "SubagentStart"
     match_kind: "literal"
     reason: "inject-profile-binding"
     note: "JSON output: hookEventName = 'SubagentStart'."
   - file: "step-07-helper-script.md"
-    line: 120
+    line: 122
     term: "SubagentStart"
     match_kind: "literal"
     reason: "inject-profile-binding"
     note: "Debug-output spec: resolves hooks[point=SubagentStart].matchers[0]."
   - file: "step-07-helper-script.md"
-    line: 324
+    line: 306
+    term: "TeamCreate"
+    match_kind: "literal"
+    reason: "convene-fallback-binding"
+    note: "agent-teams-check purpose statement: '...follows the Convene→Consult fallback... instead of issuing TeamCreate'. Platform-fact reference to the tool the probe gates."
+  - file: "step-07-helper-script.md"
+    line: 383
     term: "SubagentStart"
     match_kind: "literal"
     reason: "inject-profile-binding"
     note: "Help text: 'inject-profile — SubagentStart hook'."
   - file: "step-07-helper-script.md"
-    line: 392
+    line: 458
     term: "SubagentStart"
     match_kind: "literal"
     reason: "inject-profile-binding"
     note: "Step-07 dependency: platform-snapshot.yaml SubagentStart hook matcher."
+
+  # ── step-01: Convene fallback prose (Axiom 8) ───────────────────────
+  # Convene→Consult fallback documented in the Complex Execution Models
+  # section. Each occurrence is a platform-fact reference enumerating
+  # the tools that ARE/AREN'T available in the degraded path.
+  - file: "step-01-scaffold-and-protocol.md"
+    line: 277
+    term: "TeamCreate"
+    match_kind: "literal"
+    reason: "convene-fallback-binding"
+    note: "Fallback prose: 'TeamCreate, TeamDelete, shutdown_request, and SendMessage are unavailable'. Platform-fact enumeration of tools gated by the agent-teams capability."
+  - file: "step-01-scaffold-and-protocol.md"
+    line: 277
+    term: "TeamDelete"
+    match_kind: "literal"
+    reason: "convene-fallback-binding"
+    note: "Same fallback enumeration line — TeamDelete listed alongside TeamCreate as gated tools."
+  - file: "step-01-scaffold-and-protocol.md"
+    line: 277
+    term: "SendMessage"
+    match_kind: "literal"
+    reason: "convene-fallback-binding"
+    note: "Same fallback enumeration line — SendMessage (the platform binding for Inform) is also gated by the agent-teams capability."
+  - file: "step-01-scaffold-and-protocol.md"
+    line: 278
+    term: "Task tool"
+    match_kind: "literal"
+    reason: "convene-fallback-binding"
+    note: "Fallback execution: 'spawn ONE general-purpose deputy coordinator via the Task tool... parallel Task-tool calls'. Platform-fact reference to the substitute spawn primitive."
+  - file: "step-01-scaffold-and-protocol.md"
+    line: 278
+    term: "SendMessage"
+    match_kind: "literal"
+    reason: "convene-fallback-binding"
+    note: "Fallback synthesis note: 'no inter-agent SendMessage relay'. Platform-fact justifying handback-only synthesis."
+  - file: "step-01-scaffold-and-protocol.md"
+    line: 282
+    term: "TeamCreate"
+    match_kind: "literal"
+    reason: "convene-fallback-binding"
+    note: "Fallback rationale: 'adopters... hit Unknown tool: TeamCreate at the Complex-tier execution step instead of falling through'. Platform-fact reference to the missing-tool error mode the fallback prevents."
 
   # ── step-08: RETIRED (BL-025-m.1) ───────────────────────────────────
   # Makefile installer obsolete in plugin form. step-08-installer.md

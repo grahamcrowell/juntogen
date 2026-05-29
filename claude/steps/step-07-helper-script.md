@@ -60,9 +60,9 @@ die()   { echo "ERROR: $*" >&2; exit 1; }
 
 ### Subcommand Functions
 
-Implement these subcommands (in order). The list below enumerates ALL 11 subcommands; the generated `oj-helper` MUST implement every one. Each subcommand listed here corresponds to exactly one `^cmd_NAME(` function definition AND one case-branch in the dispatcher. The static-emitted `hooks/hooks.json` wires three of these (`inject-profile`, `conductor-inject`, `migrate-legacy`) as hook commands — if any of the three is missing from the generated helper, SessionStart/SubagentStart hooks will fire and exit with "Unknown subcommand", silently breaking the plugin at runtime.
+Implement these subcommands (in order). The list below enumerates ALL 12 subcommands; the generated `oj-helper` MUST implement every one. Each subcommand listed here corresponds to exactly one `^cmd_NAME(` function definition AND one case-branch in the dispatcher. The static-emitted `hooks/hooks.json` wires three of these (`inject-profile`, `conductor-inject`, `migrate-legacy`) as hook commands — if any of the three is missing from the generated helper, SessionStart/SubagentStart hooks will fire and exit with "Unknown subcommand", silently breaking the plugin at runtime.
 
-**MANDATORY enumeration (11 functions)**:
+**MANDATORY enumeration (12 functions)**:
 
 1. `cmd_inject_profile`         — SubagentStart hook (§1)
 2. `cmd_conductor_inject`       — SessionStart hook (§2)
@@ -75,6 +75,7 @@ Implement these subcommands (in order). The list below enumerates ALL 11 subcomm
 9. `cmd_issue_tracker_transition` — transition state (§9)
 10. `cmd_issue_tracker_comment` — comment on issue (§10)
 11. `cmd_issue_tracker_link_list` — list cross-references (§11)
+12. `cmd_agent_teams_check`     — agent-teams capability probe (§12)
 
 #### 1. inject-profile — SubagentStart Hook
 
@@ -300,6 +301,55 @@ tracker_require_jq() {
 
 > **Note**: GitHub Issues does not have first-class issue linking like some trackers. Cross-references are extracted from issue bodies and comments. Organizations needing richer linking can override via enterprise overlay.
 
+#### 12. agent-teams-check — Agent Teams Capability Probe
+
+**Purpose**: Report whether the host environment has the Claude Code experimental agent-teams feature enabled (the substrate that binds the Convene primitive on this platform). Consumed by the `/oj:cycle` and `/oj:run-task` skills at the tier-classification step: if the probe reports `available:false`, the Complex-tier branch follows the Convene→Consult fallback documented in `D32-execution-models.md` §3 ("Fallback (Axiom 8 — graceful degradation)") instead of issuing `TeamCreate`.
+
+**Invocation**: `oj-helper agent-teams-check` (no arguments)
+
+**Design principle (Axiom 8)**: This probe **always exits 0**, regardless of availability. It is a capability report, not a precondition gate — failing it would defeat the graceful-degradation path that justifies its existence (the cycle still proceeds, it just selects the degraded substrate). Modeled on `cmd_issue_tracker_check` in JSON-envelope shape, but inverts the exit-code contract: `issue-tracker-check` exits 1 on missing prereqs (the issue-tracker integration genuinely cannot proceed); `agent-teams-check` always exits 0 because the fallback IS the proceed path.
+
+**Protocol**:
+
+1. Read `${CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS:-}` once into a local variable.
+2. Emit JSON to stdout:
+   - When the value is exactly `"1"`: `{"ok":true,"available":true,"reason":"env"}`
+   - Otherwise (unset, empty, `"0"`, or any other value): `{"ok":true,"available":false,"reason":"env_unset"}`
+3. Exit 0 in every case.
+
+**Implementation skeleton**:
+
+```bash
+cmd_agent_teams_check() {
+  # No flags. Reject unknowns to mirror the other check-class subcommands.
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      *) die "Unknown flag: $1" ;;
+    esac
+  done
+
+  local val="${CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS:-}"
+  if [[ "$val" == "1" ]]; then
+    if command -v jq >/dev/null 2>&1; then
+      jq -n '{ok:true, available:true, reason:"env"}'
+    else
+      echo '{"ok":true,"available":true,"reason":"env"}'
+    fi
+  else
+    if command -v jq >/dev/null 2>&1; then
+      jq -n '{ok:true, available:false, reason:"env_unset"}'
+    else
+      echo '{"ok":true,"available":false,"reason":"env_unset"}'
+    fi
+  fi
+  return 0
+}
+```
+
+**jq dependency**: Use jq when present for safe JSON encoding (matches the other tracker subcommands); fall back to hardcoded JSON literals when jq is absent so the probe stays usable on degraded installs. Either path emits valid JSON.
+
+**Why this matters**: Without an explicit probe, skills would have to inspect the env var themselves (duplicated logic across `/oj:cycle` and `/oj:run-task`) or assume Convene is available (the bug this subcommand exists to fix). Centralizing the check here makes the availability rule a single grep target and lets future host-feature detection (e.g., a `claude config get` form) replace the env-var heuristic without touching every skill.
+
 ### Dispatcher
 
 At the end of the script, implement the dispatcher:
@@ -321,6 +371,7 @@ case "${1:-}" in
   issue-tracker-transition)  shift; cmd_issue_tracker_transition "$@" ;;
   issue-tracker-comment)     shift; cmd_issue_tracker_comment "$@" ;;
   issue-tracker-link-list)   shift; cmd_issue_tracker_link_list "$@" ;;
+  agent-teams-check)         shift; cmd_agent_teams_check "$@" ;;
   help|--help|-h|"")
     cat <<'EOF'
 oj-helper — dispatcher for OpenJunto utility subcommands
@@ -341,6 +392,8 @@ SUBCOMMANDS:
   issue-tracker-transition   Change issue state (open/closed)
   issue-tracker-comment      Add comment to issue
   issue-tracker-link-list    List cross-references for an issue
+
+  agent-teams-check          Probe agent-teams capability (Convene substrate); always exits 0
 
   help                 Show this help message
 
@@ -382,9 +435,10 @@ After generation, verify the script:
 1. **Shebang**: Present and correct (`#!/usr/bin/env bash`)
 2. **Core conventions**: `set -euo pipefail`, `debug()`, `die()` functions present
 3. **Contracts sourced**: header contains `source "${_OJ_SCRIPT_DIR}/lib/contracts.sh"` (die-on-fail). Verify with: `grep -E "source.*contracts\.sh" bin/oj-helper` → ≥1 hit.
-4. **All 11 subcommand functions present**: verify with `grep -cE "^cmd_" bin/oj-helper` → MUST return `11`. Spot-check the two most easily missed:
+4. **All 12 subcommand functions present**: verify with `grep -cE "^cmd_" bin/oj-helper` → MUST return `12`. Spot-check the two most easily missed:
    - `grep -E "^cmd_conductor_inject\(\)" bin/oj-helper` → 1 hit
    - `grep -E "^cmd_migrate_legacy\(\)" bin/oj-helper` → 1 hit
+   - `grep -E "^cmd_agent_teams_check\(\)" bin/oj-helper` → 1 hit (Convene-fallback probe; missing → Complex tier breaks when env var is unset)
 5. **Pinned-string reference**: `grep "OJ_STDERR_CONDUCTOR_MISSING" bin/oj-helper` → ≥1 hit (used in `cmd_conductor_inject`).
 5a. **Version banner**: `cmd_conductor_inject` emits `OpenJunto v<version> active — OpenJunto coordination system` to stderr on every path, sourcing the version from `_oj_plugin_version`. Verify the banner string and that it is stderr-only:
    - `grep -F 'active — OpenJunto coordination system' bin/oj-helper` → ≥1 hit
@@ -395,7 +449,7 @@ After generation, verify the script:
 8. **Graceful degradation**: inject-profile and conductor-inject exit 0 (with valid JSON envelope where applicable) when jq missing, transcript unavailable, profile not found, or CONDUCTOR.md missing
 9. **JSON output**: issue-tracker-check, issue-tracker-list, conductor-inject output valid JSON
 10. **Debug output**: debug() calls use descriptive messages, write to stderr
-11. **Dispatcher**: Complete case statement listing ALL 11 subcommands + the `help` branch. Every `command` field in the static-emitted `hooks/hooks.json` (`conductor-inject`, `migrate-legacy`, `inject-profile`) MUST have a corresponding case-branch in the dispatcher. A regression-class check: for every `oj-helper <name>` invocation in `hooks/hooks.json`, `bin/oj-helper` MUST contain both a case-branch `<name>)` AND a function `cmd_<name_underscored>(`.
+11. **Dispatcher**: Complete case statement listing ALL 12 subcommands + the `help` branch. Every `command` field in the static-emitted `hooks/hooks.json` (`conductor-inject`, `migrate-legacy`, `inject-profile`) MUST have a corresponding case-branch in the dispatcher. A regression-class check: for every `oj-helper <name>` invocation in `hooks/hooks.json`, `bin/oj-helper` MUST contain both a case-branch `<name>)` AND a function `cmd_<name_underscored>(`.
 12. **Syntax-clean**: `bash -n bin/oj-helper` → exit 0.
 13. **Executable**: Script is executable (`chmod +x`)
 

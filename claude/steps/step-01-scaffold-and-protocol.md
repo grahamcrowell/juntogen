@@ -271,6 +271,16 @@ Capture the principle from Axiom 4: Compact profiles for Simple tier, tier-aware
 #### Productive Tensions
 Capture the principle from Axiom 5: Don't force resolution of genuine trade-offs. Forward tensions as design constraints.
 
+#### Convene Fallback (Axiom 8 — Graceful Degradation)
+The Section 4 "Complex: Parallel Team (Swarm)" subsection MUST include a **Fallback** clause documenting the Convene→Consult degradation defined in `D32-execution-models.md` §3 Fallback. Required content:
+
+- When `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` is unset (or the host disables the agent-teams feature), `TeamCreate`, `TeamDelete`, `shutdown_request`, and `SendMessage` are unavailable.
+- In that case, Complex tier degrades to a deputy-coordinator parallel-Task-tool fan-out: spawn ONE general-purpose deputy coordinator via the Task tool, brief it with the full stakeholder plan; the deputy spawns the stakeholder analyses as parallel Task-tool calls and synthesizes via the handback protocol only (no inter-agent SendMessage relay).
+- User Checkpoint, pre-mortem (≥3 scenarios), and adversarial review remain mandatory.
+- Skills detect availability via `oj-helper agent-teams-check` (which always exits 0 and reports `{"ok":true,"available":true|false,"reason":"env"|"env_unset"}`); the branch selector reads `.available` from the JSON, not the exit code.
+
+This Fallback clause is load-bearing — without it, adopters whose environments disable the agent-teams flag hit "Unknown tool: TeamCreate" at the Complex-tier execution step instead of falling through to the documented degradation.
+
 ---
 
 ## Verification
