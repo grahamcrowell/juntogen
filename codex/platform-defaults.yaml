@@ -1,0 +1,160 @@
+# platform-defaults.yaml
+# Curated offline fallback representing the current OpenAI Codex CLI platform.
+# Used by Step 00 when no platform-declaration.yaml is present and introspection
+# is unavailable (defaults mode). Also used as the fallback source for fields
+# that introspection cannot observe (hooks, constraints, cost ratios, other models' details).
+#
+# This is the Codex sibling of juntogen/claude/platform-defaults.yaml. It conforms
+# to the SAME Layer 0 capability schema (M16-derivation-architecture.md §3) so the
+# platform-agnostic step prompts can consume it unchanged. Where the schema needs a
+# Codex-specific extension (reasoning_effort), the field is additive and annotated.
+#
+# VERSION: Update `version` when the platform roster changes significantly
+# (new model generation, new tools, context window changes, cost ratio shifts).
+#
+# PRIMITIVE BINDINGS (juntospec coordination primitive -> Codex CLI mechanism).
+# The spec corpus (D08-D80) refers ONLY to the abstract primitive; the concrete
+# Codex binding lives here and in D64-tooling.md:
+#   Consult         -> Codex subagent (single agent-definition file, /agent or auto-orchestration)
+#   Convene         -> parallel Codex subagents; Codex waits for all, returns a consolidated response
+#   Inform          -> UNAVAILABLE (no agent-to-agent messaging) -> degrades to handback-only synthesis (Axiom 8)
+#   Onboard         -> native agent-definition file `developer_instructions` (primary); SubagentStart hook (fallback)
+#   CONDUCTOR.md    -> CONDUCTOR.md shipped in plugin, injected via SessionStart hook (AGENTS.md left to the user)
+#   install-root    -> ~/.codex  ($CODEX_HOME)
+#   model-tier      -> gpt-5.4-mini (routine) / gpt-5.3-codex (implementation) / gpt-5.5 (reasoning)
+#   operational-namespace -> state/, evolution/, archive/ under ~/.codex
+#
+# MODEL IDs: api_id strings are OpenAI's canonical Codex model identifiers usable
+# directly in config.toml `model = "..."`. Confirmed against developers.openai.com/codex/models
+# (mid-2026 roster). [VERIFY] markers flag values not stated in the public docs that
+# need confirmation before this file graduates from scaffold to a validated snapshot.
+#
+# See: M16-derivation-architecture.md §3 for schema definition and field semantics.
+
+version: "0.0.1"
+version_date: "2026-06-04"
+description: "OpenAI Codex CLI platform defaults — gpt-5.5 / gpt-5.3-codex / gpt-5.4-mini generation (scaffold)"
+
+platform:
+  # Identity block (Codex extension; ignored by the platform-agnostic schema
+  # consumers, consumed by D64-tooling.md and the step prompts for path/token binding).
+  identity:
+    platform_id: "codex"
+    cli_binary: "codex"
+    install_root: "~/.codex"          # $CODEX_HOME; override via CODEX_HOME env var
+    plugin_root_token: "${PLUGIN_ROOT}"   # resolved by the Codex plugin host at hook-invocation time
+    manager_protocol_native_file: "AGENTS.md"   # platform-native instruction file (left to the user)
+    plugin_manifest_dir: ".codex-plugin"        # plugin.json lives here; skills/ hooks/ .mcp.json at plugin root
+
+  tools:
+    # Codex exposes a different concrete tool surface than Claude Code. The spec
+    # corpus never names these directly (it uses primitives); they are recorded
+    # for introspection parity and to document the substrate each primitive binds to.
+
+    # --- Agent spawning (Consult / Convene substrate) ---
+    # Codex subagents are defined as standalone TOML files (~/.codex/agents/<name>.toml
+    # or <repo>/.codex/agents/<name>.toml). There is no single public "spawn" tool the
+    # model calls by name; Codex orchestrates spawning/routing/collection and the user
+    # drives it with `/agent`. Modeled here as a capability for derivation parity.
+    - name: "subagents"
+      available: true
+      parameters: ["name", "description", "developer_instructions", "model", "model_reasoning_effort", "sandbox_mode", "mcp_servers"]
+      # Consult = one subagent; Convene = many in parallel (consolidated handback).
+
+    # --- File operations ---
+    - name: "read_file"
+      available: true
+      parameters: ["path"]
+    - name: "apply_patch"
+      available: true
+      parameters: ["patch"]            # Codex's structured file-edit envelope (create/update/delete)
+
+    # --- Shell ---
+    - name: "shell"
+      available: true
+      parameters: ["command", "workdir", "timeout"]   # sandbox governed by sandbox_mode + approval_policy
+
+    # --- Planning ---
+    - name: "update_plan"
+      available: true
+      parameters: ["plan"]
+
+    # --- Web ---
+    - name: "web_search"
+      available: true
+      parameters: ["query"]
+
+    # --- Extensibility ---
+    - name: "mcp"
+      available: true
+      parameters: []                   # MCP servers configured in config.toml / .mcp.json; tools surface dynamically
+    - name: "skills"
+      available: true
+      parameters: []                   # Agent Skills (SKILL.md); progressive disclosure
+    - name: "custom_prompts"
+      available: true
+      parameters: []                   # Markdown prompts invoked as slash commands (~/.codex/prompts/)
+
+  models:
+    # Symbolic id: used in derivation chains and human-readable references.
+    # api_id: actual string for config.toml `model =`.
+    # tier: cognitive-demand class (model-tier primitive) — routine/implementation/reasoning.
+    # reasoning_effort: Codex-specific default effort (minimal|low|medium|high|xhigh).
+    #   This is an ADDITIVE schema extension over the Claude defaults: on Codex, effort
+    #   is a first-class per-invocation/per-agent knob, so per-expert effort tiering IS
+    #   controllable (unlike Claude Code — see D64-tooling.md and step-01 note).
+    # cost_ratio: relative input token cost, routine tier = 1.0 baseline. [VERIFY] illustrative.
+    # context_window / max_output_tokens: [VERIFY] confirm against OpenAI docs; values below
+    #   use the GPT-5 family API figures (400K total) as a scaffold placeholder.
+    - id: "mini"
+      api_id: "gpt-5.4-mini"
+      tier: "routine"
+      reasoning_effort: "low"
+      context_window: 400000          # [VERIFY]
+      max_output_tokens: 128000       # [VERIFY]
+      cost_ratio: 1.0
+    - id: "codex"
+      api_id: "gpt-5.3-codex"
+      tier: "implementation"
+      reasoning_effort: "medium"
+      context_window: 400000          # [VERIFY]
+      max_output_tokens: 128000       # [VERIFY]
+      cost_ratio: 4.0                 # [VERIFY] illustrative
+    - id: "frontier"
+      api_id: "gpt-5.5"
+      tier: "reasoning"
+      reasoning_effort: "high"
+      context_window: 400000          # [VERIFY]
+      max_output_tokens: 128000       # [VERIFY]
+      cost_ratio: 8.0                 # [VERIFY] illustrative
+    # Alternates available on the platform (not part of the 3-tier abstraction; documented
+    # for declaration-mode authors): gpt-5.4 (flagship), gpt-5.2 (prior general), gpt-5.3-codex-spark.
+
+  # reasoning_effort is a platform-level capability, not just a per-model default.
+  reasoning_effort_levels: ["minimal", "low", "medium", "high", "xhigh"]
+
+  hooks:
+    # Codex lifecycle hooks (developers.openai.com/codex/hooks). Loaded from
+    # ~/.codex/hooks.json, <repo>/.codex/hooks.json, inline [[hooks.*]] in config.toml,
+    # OR a plugin's hooks/hooks.json (auto-detected — no manifest entry required).
+    # Hook JSON-on-stdin / JSON-on-stdout contract matches Claude Code's, including
+    # hookSpecificOutput.additionalContext for context injection.
+    - point: "SessionStart"
+      capabilities:
+        - "run_command"
+        - "add_context"          # stdout text OR hookSpecificOutput.additionalContext -> developer context
+      matchers:
+        - "startup"
+        - "resume"               # also: matcher "" fires for all; OpenJunto uses conductor-inject here
+    - point: "SubagentStart"
+      capabilities:
+        - "add_context"          # additionalContext injected as developer context for the subagent (Onboard fallback)
+      matchers: []               # [VERIFY] matcher semantics for named subagents; "" = all subagents
+    # Other available hook points (not consumed by OpenJunto's core binding, listed for completeness):
+    #   SubagentStop, PreToolUse, PostToolUse, PermissionRequest, PreCompact, PostCompact,
+    #   UserPromptSubmit, Stop
+
+  constraints:
+    max_concurrent_agents: 6         # agents.max_threads default (config.toml [agents])
+    max_concurrent_agents_type: "configured"   # tunable, not a hard platform ceiling
+    max_agent_depth: 1               # agents.max_depth default — nesting/recursion limit
