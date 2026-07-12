@@ -51,9 +51,9 @@ consumers:
    - **Path pattern**: `~/.claude/agents/PROFILE_NAME.md` reference in spawn prompt
 8. Path traversal guard: reject profile names containing `..` or `/`
 9. Load profile files:
-   - Read `~/.claude/agents/_preamble.md`
-   - Read `~/.claude/agents/{PROFILE_NAME}.md` (full profile)
-   - If full profile not found, fallback to `~/.claude/agents/compact/{PROFILE_NAME}.md`
+   - Read `~/.claude/reference/expert-preamble.md`
+   - Read `~/.claude/agents/{PROFILE_NAME}.md` (full profile) and STRIP its leading YAML frontmatter block (the two-key `name`/`description` header) before injection, so the injected context is prose only
+   - If full profile not found, fallback to `~/.claude/reference/compact/{PROFILE_NAME}.md`
 10. Output hook response JSON:
 ```json
 {
@@ -66,7 +66,7 @@ consumers:
 
 **CRITICAL DESIGN NOTE**: Claude Code does NOT pass the spawn prompt to hooks in the input JSON. The hook must read the subagent's transcript file to find the spawn prompt. This is based on runtime behavior, not documented API. The hook degrades gracefully if the convention changes (exits 0 with no output, spawn proceeds without profile injection).
 
-**Fallback behavior**: If jq missing, transcript unavailable, profile not found, or no expert marker detected → exit 0 with no output. The spawn proceeds without profile injection. The manager's spawn prompt should include fallback instructions: "**FIRST**: Read `~/.claude/agents/_preamble.md` and your full profile..."
+**Fallback behavior**: If jq missing, transcript unavailable, profile not found, or no expert marker detected → exit 0 with no output. The spawn proceeds without profile injection. The manager's spawn prompt should include fallback instructions: "**FIRST**: Read `~/.claude/reference/expert-preamble.md` and your full profile..."
 
 [OBSERVABLE] inject-profile hook MUST exit 0 with no output (graceful degradation) when dependencies are missing (jq unavailable, transcript not found, profile not found, or no expert marker detected).
   FALSIFIER: inject-profile hook exits with non-zero code or produces error output when a dependency is missing, causing the spawn to fail

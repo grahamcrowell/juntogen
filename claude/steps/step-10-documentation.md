@@ -209,7 +209,7 @@ Generate three user-facing documentation files:
    - Read WHY.md for tradeoffs
    - Read CONDUCTOR.md for full manager protocol
    - Try `/run-task` on a project with backlog
-   - Check `agents/index.md` for expert roster
+   - Check `reference/expert-index.md` for expert roster
 
 ### Key Requirements
 
@@ -241,7 +241,7 @@ After generating all three files, verify:
    - **Positive**: the "Your First Task" example MUST be prefixed with `/oj:cycle ` (e.g., `/oj:cycle Review this file for security issues: src/auth/token_validator.go`) — matches the live `oj-claude/docs/onboarding.md` post-PR#4. A bare unprefixed example is a fidelity bug.
    - Triage model explained (4 criteria, 0-1/2-3/4 scoring)
    - Common mistakes section exists
-   - Links to next steps (WHY.md, CLAUDE.md, agents/index.md)
+   - Links to next steps (WHY.md, CLAUDE.md, reference/expert-index.md)
 
 ## Dependencies
 

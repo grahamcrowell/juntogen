@@ -4,9 +4,10 @@
 
 Read these specification files before generating:
 
-1. **Primary spec**: `D48-reference-system.md` — defines the 8 reference files, their purpose, content structure, and why they're separate from CLAUDE.md
+1. **Primary spec**: `D48-reference-system.md` — defines the reference files, their purpose, content structure, and why they're separate from CONDUCTOR.md
 2. **Supporting specs**:
-   - `D32-execution-models.md` — workflow stages by tier, synthesis gate format, pre-mortem format, adversarial review protocol
+   - `D08-core-protocol.md` — manager protocol structure; source for the Reference-and-Operations detail and definition-of-done moved into `reference/execution-protocol.md`
+   - `D32-execution-models.md` — workflow stages by tier, synthesis gate format, pre-mortem format, adversarial review protocol, execution models full mechanics, agent spawning + model selection
    - `D40-quality-framework.md` — handback protocol, STRONGEST OBJECTION, FALSIFIER, calibration challenge, quality gates, anti-patterns
 
 Also examine the actual OpenJunto source files for reference:
@@ -21,7 +22,7 @@ Also examine the actual OpenJunto source files for reference:
 
 ## Task
 
-Generate **8 reference files** in markdown format. Create each file at the path specified:
+Generate **9 reference files** in markdown format. Create each file at the path specified:
 
 1. `reference/workflow-stages.md`
 2. `reference/stakeholder-guide.md`
@@ -31,6 +32,7 @@ Generate **8 reference files** in markdown format. Create each file at the path 
 6. `reference/file-patterns.md`
 7. `reference/project-scaffolding.md`
 8. `reference/communication-standards.md`
+9. `reference/execution-protocol.md` (NEW — holds the execution mechanics moved out of the slim CONDUCTOR; see § 9 below)
 
 Each file is a standalone markdown reference document loaded on-demand by tier.
 
@@ -50,11 +52,12 @@ Each file is a standalone markdown reference document loaded on-demand by tier.
   - TENSION items are PROTECTED — cannot be removed during synthesis
   - Constraint classification table: Hard (2+ stakeholders OR domain authority → must address) | Soft (single stakeholder → should address, explain if deferred) | Context (background → informs approach)
 - **Pre-Mortem Gate**: Prompt ("Imagine this shipped and failed. What went wrong?"), requirements by tier (Moderate: 2 scenarios, Complex: 3 scenarios spanning categories), output format
-- **Adversarial Review Protocol**: Reviewer prompt ("find the single most important problem"), reviewer responsibilities (test failure modes, identify #1 problem, explain absence), output format with sections (FAILURE MODES TESTED, #1 PROBLEM FOUND, ADDITIONAL CONCERNS, CONFIDENCE CALIBRATION, VERDICT)
+- **Adversarial Review Protocol**: Reviewer prompt ("find the single most important problem"), reviewer responsibilities (test failure modes, identify #1 problem, explain absence), output format with sections (FAILURE MODES TESTED, #1 PROBLEM FOUND, ADDITIONAL CONCERNS, CONFIDENCE CALIBRATION, VERDICT).
+  - **Reviewer scope (Item 3)**: the reviewer flags ONLY correctness and requirements-affecting gaps — not stylistic preferences, speculative nice-to-haves, or manufactured objections. "No material concerns" is an acceptable review outcome at ALL tiers (Simple, Moderate, and Complex); the reviewer is NOT required to invent a problem to justify the review. The **FAILURE MODES TESTED** section remains mandatory regardless of verdict — even a clean review must document which failure modes were probed. State this scoping explicitly in the reviewer prompt and responsibilities so a clean "no material concerns" verdict (with FAILURE MODES TESTED populated) passes the quality gate rather than triggering a forced-objection loop.
 - **Output Compression**: Table mapping expert roles to compression levels (Analyst: compressed | Implementer: standard | Reviewer: full)
 - **Deputy Coordinator Pattern**: Coordinator responsibilities in Complex tier (receives full plan, creates tasks, synthesizes output, relays to manager)
 
-**Plugin-Internal Reference Form (MANDATORY)**: The source `{OJ_SOURCE}/reference/workflow-stages.md` uses `~/.claude/agents/compact/` in the Load-Perspectives row of the Simple-tier workflow table. **During emission**, rewrite `~/.claude/agents/compact/` to `${CLAUDE_PLUGIN_ROOT}/agents/` and update the path to reflect the flat `-compact.md` suffix layout (post-BL-025-i.1, the nested `agents/compact/` subdirectory was retired in favor of `agents/*-compact.md` siblings at the same level as their full profiles). This is a transform-not-copy operation. Tier A Assertion 19 enforces a zero-`~/.claude/`-literal invariant across the scoped plugin tree; emitting the source literal causes the assertion to FAIL.
+**Plugin-Internal Reference Form (MANDATORY)**: The source `{OJ_SOURCE}/reference/workflow-stages.md` uses `~/.claude/agents/compact/` in the Load-Perspectives row of the Simple-tier workflow table. **During emission**, rewrite `~/.claude/agents/compact/<name>.md` to `${CLAUDE_PLUGIN_ROOT}/reference/compact/<name>.md` — the compact profiles now live under `reference/compact/` (nested under `reference/`, with the `-compact` suffix dropped from each basename). Do NOT emit `agents/compact/`, `agents/*-compact.md`, or any `~/.claude/` form. This is a transform-not-copy operation. Tier A Assertion 19 enforces a zero-`~/.claude/`-literal invariant across the scoped plugin tree; emitting the source literal causes the assertion to FAIL.
 
 **Design intent**: This file is 8KB of tactical execution detail. Simple tier never needs pre-mortem or adversarial review formats. Moderate tier doesn't need team formation. Loading on-demand saves 5-7KB for 80% of work.
 
@@ -177,6 +180,37 @@ Each file is a standalone markdown reference document loaded on-demand by tier.
 
 **Design intent**: Quality guidelines valuable for calibration and meta-review, not operational protocol. Anti-patterns table is remedial content most valuable when something goes wrong. Loading for Complex tier where communication complexity justifies explicit standards.
 
+### 9. execution-protocol.md (NEW)
+
+**Purpose**: Hold the execution mechanics moved out of the slim CONDUCTOR (step-01). CONDUCTOR carries only the core sections and a just-in-time load pointer to this file; the manager loads `${CLAUDE_PLUGIN_ROOT}/reference/execution-protocol.md` before executing any Moderate or Complex item. This file is the authoritative render target for the content step-01 explicitly REMOVED from CONDUCTOR.
+
+**Sources**: D08 (core-protocol — Reference-and-Operations detail, Definition of Done structure), D32 (execution-models — full Simple/Moderate/Complex mechanics, agent spawning + model selection), D40 (quality-framework — handback protocol, quality gates), D48 (reference-system — tier-aware context loading). Where D08 uses `[-> FILE:id]` markers, resolve them against the canonical source files exactly as step-01 previously did.
+
+**Must include** (each is the content moved out of CONDUCTOR — reproduce the [EXACT] items verbatim here):
+
+- **Execution Models (full mechanics)** — the three tiers with complete detail:
+  - **Simple**: inline perspective rotation (the Simple-tier PERSPECTIVE block stays in CONDUCTOR under Stakeholder Perspectives; here give the full rotation-and-synthesize mechanics).
+  - **Moderate**: the three phase spawn formats verbatim — Phase 1 `<!-- oj-expert: [profile-filename] -->` marker + stakeholder analysis instructions; Phase 2 lead implementation with synthesized findings; Phase 3 adversarial review with failure-mode testing.
+  - **Complex**: parallel team via Convene, INCLUDING the load-bearing **Fallback** clause (Convene→Consult degradation, Axiom 8) exactly as specified in step-01 § Convene Fallback and `D32-execution-models.md` §3 Fallback — the `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` env gate, the `oj-helper agent-teams-check` probe (`.available` from JSON, always exits 0), the deputy-coordinator parallel-Task-tool fan-out with handback-only synthesis, and the **runtime backstop** (if any agent-teams-gated tool raises "Unknown tool"/"tool unavailable" at runtime, fall through to the deputy-coordinator fan-out; User Checkpoint still fires). This clause is load-bearing: CONDUCTOR's Section 5 pointer promises it lives here.
+- **Handback Protocol** — both formats with their [EXACT] anchor lines (these anchors are validated HERE, not in CONDUCTOR):
+  - **Simple Tier Format**: under `### Simple Tier Format`, emit the anchor line `Compressed format (~5 lines):` verbatim (including the tilde and trailing colon), one blank line, then the 5-field compressed handback fenced block (HANDBACK/STATUS/CONFIDENCE header line, DELIVERABLE, RECOMMENDATION, STRONGEST OBJECTION, NEXT).
+  - **Moderate/Complex Tier Format**: under `### Moderate/Complex Tier Format`, emit the anchor line `Full format (9 fields):` verbatim (including the parenthesized field count and trailing colon), one blank line, then the 9-field full handback fenced block (HANDBACK, STATUS, DELIVERABLE, RECOMMENDATION, RATIONALE, STRONGEST OBJECTION, FALSIFIER, CONFIDENCE, CAVEATS, NEXT ACTIONS — per `D40-quality-framework.md` § Handback Protocol).
+  - Both anchor lines are [EXACT] — emit verbatim, do not paraphrase to "5-line compressed format" / "9-field full format". Also include status semantics, confidence levels, and calibration guidance.
+- **Quality Gates** — three subsections with exact item counts: Simple Tier **2 items**, Moderate Tier **6 items**, Complex Tier **9 items**. Apply the Item-3 reviewer-scope wording: the review gate accepts "no material concerns" at all tiers provided the FAILURE MODES TESTED section is populated; the gate flags only correctness/requirements-affecting gaps.
+- **Agent Spawning + Model Selection** — the spawning pattern plus the full model-selection content moved from CONDUCTOR Section 7:
+  - **[EXTERNAL]** tier table rendered from `platform-snapshot.yaml` `models` (symbolic ids, tiers, cost ratios — do not hardcode), plus "when in doubt" guidance.
+  - **Function-first selection rules** (5 bullets, concrete model ids resolved `{tier-routine}`→`haiku`, `{tier-implementation}`→`sonnet`, `{tier-reasoning}`→`opus`): reviewer-slot → strongest (always wins); Complex-tier lead → strongest; Moderate-tier lead → implementation, escalate to reasoning for high-risk / unresolved TENSION; Phase-1 analysts → implementation (routine for bounded/docs-only); domain-trigger specialists → implementation, escalate to reasoning when their domain is the decisive risk.
+  - **Per-Role Default Model (adjustable; function rules always win)** table: strongest tier (Distinguished Engineer, Security Engineer, Site Reliability Engineer, Engineering Consultant); implementation tier (Software Engineer, Solutions Architect, DevOps Engineer, Test Engineer, Data Architect, Data Scientist, ML Engineer, Enterprise Architect, Business Analyst, Product Manager, Executive Leadership Coach); routine tier (Technical Writer — with escalation when user-facing prose is the deliverable). Override qualifier: "the function rules above always take precedence when any of them applies (reviewer-slot, Complex-tier lead, Moderate-tier lead, Phase-1 analyst, or domain-trigger specialist); the per-role default below fires only when no function rule matches the spawn."
+  - **Fan-Out Budget** — the per-invocation spawn/fan-out budget guidance from D32 §6.
+  - **Worked-example anchors**: back-pointer to `${CLAUDE_PLUGIN_ROOT}/reference/worked-examples.md` Example 2 (analysts-on-`sonnet` / reviewer-on-`opus` is the general pattern), plus the reviewer-slot-override-on-a-non-opus-default-role anchor (a Senior Technical Writer default `haiku` or Senior Software Engineer default `sonnet` spawned as reviewer runs on `opus` — the reviewer slot is `opus` by function, not role; Example 2's Security-Engineer-on-`opus` reviewer is NOT that role's default).
+  - **Effort out-of-scope note**: per-expert effort is not controllable today — profiles are injected into `general-purpose` Task spawns via the `SubagentStart` hook (`oj-helper inject-profile`); the Task tool does NOT read `${CLAUDE_PLUGIN_ROOT}/agents/*.md` as subagent definitions (so their frontmatter is a no-op for spawn config); there is no per-invocation effort knob on that surface. Effort is session-level (`/effort`). Defer per-expert effort tiering.
+- **Definition of Done** — the 4 subsections moved from CONDUCTOR Section 10: Simple/Moderate/Complex tier done-criteria, Verifying Deliverables, Incorporating Lessons.
+- **Reference and Operations** — the detail moved from CONDUCTOR Section 9: issue-tracker bootstrap, the **Tier-Aware Context Loading** table (3 tiers with exact loading instructions), the **Reference Files** table (list every reference file this step generates with content descriptions), and the **Templates** table (5 templates with when-to-use descriptions).
+
+**Cross-reference resolution (MANDATORY)**: every `${CLAUDE_PLUGIN_ROOT}/...md` cross-reference emitted in this file MUST resolve to a real file the plugin tree will contain — e.g., `${CLAUDE_PLUGIN_ROOT}/reference/worked-examples.md`, `${CLAUDE_PLUGIN_ROOT}/reference/stakeholder-guide.md`, `${CLAUDE_PLUGIN_ROOT}/reference/workflow-stages.md`, `${CLAUDE_PLUGIN_ROOT}/reference/compact/<name>.md`, `${CLAUDE_PLUGIN_ROOT}/agents/<name>.md`. Do NOT reference `agents/index.md`, `agents/_preamble.md`, or `agents/*-compact.md` (retired paths — use `reference/expert-index.md`, `reference/expert-preamble.md`, `reference/compact/<name>.md`). Do NOT emit `~/.claude/` literals (Tier A Assertion 19).
+
+**Design intent**: The slim CONDUCTOR keeps only what the manager needs resident every session (role, constraints, triage, stakeholder selection, tier overview). The heavy execution machinery — spawn formats, handback formats, quality gates, model selection, definition of done, ops detail — is 12-15KB that only matters once the manager is actually executing a Moderate/Complex item. Just-in-time loading keeps the always-resident CONDUCTOR small while preserving full fidelity when it counts.
+
 ## Format Requirements
 
 Each file must:
@@ -192,11 +226,12 @@ Each file must:
 
 After generation, verify each file:
 
-1. **Completeness**: All required sections and tables present
-2. **Format accuracy**: FINDING/TENSION ledger syntax, PERSPECTIVE block format, adversarial review output format match specs
-3. **Cross-references**: References to other plugin-internal files use the `${CLAUDE_PLUGIN_ROOT}/...` form (e.g., `${CLAUDE_PLUGIN_ROOT}/reference/stakeholder-guide.md`), NOT `~/.claude/...` — the latter resolves to the adopter's HOME, not the plugin tree, and FAILS Tier A Assertion 19. The dev-feedback-path exception uses `${CLAUDE_PLUGIN_DATA:-$HOME/.claude/dev}/...` per the BL-025-i.2 precedent.
-4. **Size appropriateness**: Files are substantive but not bloated (workflow-stages ~8KB, stakeholder-guide ~5KB, etc.)
+1. **Completeness**: All required sections and tables present. All 9 files emitted, including the NEW `reference/execution-protocol.md`.
+2. **Format accuracy**: FINDING/TENSION ledger syntax, PERSPECTIVE block format, adversarial review output format match specs. In execution-protocol.md: both handback anchor lines (`Compressed format (~5 lines):` and `Full format (9 fields):`) present verbatim, quality-gate counts 2/6/9, and the Convene→Consult Fallback clause (with runtime backstop) present.
+3. **Cross-references**: References to other plugin-internal files use the `${CLAUDE_PLUGIN_ROOT}/...` form (e.g., `${CLAUDE_PLUGIN_ROOT}/reference/stakeholder-guide.md`), NOT `~/.claude/...` — the latter resolves to the adopter's HOME, not the plugin tree, and FAILS Tier A Assertion 19. Compact-profile refs use `${CLAUDE_PLUGIN_ROOT}/reference/compact/<name>.md` (NOT `agents/*-compact.md` or `agents/compact/`); preamble/index refs use `reference/expert-preamble.md` / `reference/expert-index.md`. Every `${CLAUDE_PLUGIN_ROOT}/...md` cross-ref in execution-protocol.md resolves to a real generated file. The dev-feedback-path exception uses `${CLAUDE_PLUGIN_DATA:-$HOME/.claude/dev}/...` per the BL-025-i.2 precedent.
+4. **Size appropriateness**: Files are substantive but not bloated (workflow-stages ~8KB, stakeholder-guide ~5KB, execution-protocol ~12-15KB, etc.)
 5. **Standalone clarity**: Each file is comprehensible without reading others (minimal forward references)
+6. **Reviewer scope (Item 3)**: workflow-stages.md adversarial-review protocol and execution-protocol.md quality gates both state that "no material concerns" is acceptable at all tiers, the reviewer flags only correctness/requirements-affecting gaps, and the FAILURE MODES TESTED section remains mandatory.
 
 ## Dependencies
 

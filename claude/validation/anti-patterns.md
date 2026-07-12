@@ -213,12 +213,12 @@ After fixing, verify format consistency:
 ```bash
 # PERSPECTIVE format should appear in:
 # - CLAUDE.md (Execution Models section)
-# - _preamble.md (Inline Perspective Context section)
+# - reference/expert-preamble.md (Inline Perspective Context section)
 # - workflow-stages.md (Simple Tier workflow)
 
 # HANDBACK format should appear in:
 # - CLAUDE.md (Handback Protocol section)
-# - _preamble.md (Handback Protocol Reference section)
+# - reference/expert-preamble.md (Handback Protocol Reference section)
 # - quality-framework.md (Handback Protocol section) if standalone file
 
 # Quality gate counts should match in:
@@ -304,7 +304,7 @@ Two-Dimensional Triage section must clearly state:
 For each tier, create distinct workflow description:
 
 **Simple Tier Workflow**:
-1. Manager reads compact profiles from `agents/compact/`
+1. Manager reads compact profiles from `reference/compact/` (0.1.0: moved from `agents/compact/`)
 2. Manager applies each stakeholder lens inline
 3. Manager produces PERSPECTIVE block for each stakeholder
 4. Manager synthesizes findings

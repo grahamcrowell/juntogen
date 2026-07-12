@@ -16,6 +16,17 @@
 # plugin-validate.yml, .gitignore, LICENSE, VERSION) STAY in the
 # snapshot — they live in oj-claude across regens as project
 # infrastructure and the regen pipeline does not overwrite them.
+#
+# 0.1.0 refresh (file-set deltas):
+#   - ADD  reference/execution-protocol.md   (on-demand manager-protocol
+#          reference; CONDUCTOR CORE stays slim and points at it).
+#   - MOVE agents/_preamble.md -> reference/expert-preamble.md
+#   - MOVE agents/index.md     -> reference/expert-index.md
+#   - MOVE agents/<name>-compact.md (16) -> reference/compact/<name>.md
+#          (drop the -compact suffix; nested under reference/compact/).
+# Net: agents/ now holds ONLY the 16 full profiles. Full profiles keep
+# their agents/<name>.md path. subagent_start_matchers UNCHANGED
+# (still general-purpose; native-subagent migration deferred).
 ---
 snapshot_version: "1"
 captured_at: "2026-05-11T19:35:44Z"
@@ -30,39 +41,21 @@ files:
   - ".githooks/commit-msg"
   - ".github/workflows/plugin-validate.yml"
   - ".gitignore"
-  - "agents/_preamble.md"
-  - "agents/index.md"
-  - "agents/senior-business-analyst-compact.md"
   - "agents/senior-business-analyst.md"
-  - "agents/senior-data-architect-compact.md"
   - "agents/senior-data-architect.md"
-  - "agents/senior-data-scientist-compact.md"
   - "agents/senior-data-scientist.md"
-  - "agents/senior-devops-engineer-compact.md"
   - "agents/senior-devops-engineer.md"
-  - "agents/senior-distinguished-engineer-compact.md"
   - "agents/senior-distinguished-engineer.md"
-  - "agents/senior-engineering-consultant-compact.md"
   - "agents/senior-engineering-consultant.md"
-  - "agents/senior-enterprise-architect-compact.md"
   - "agents/senior-enterprise-architect.md"
-  - "agents/senior-executive-leadership-coach-compact.md"
   - "agents/senior-executive-leadership-coach.md"
-  - "agents/senior-ml-engineer-compact.md"
   - "agents/senior-ml-engineer.md"
-  - "agents/senior-product-manager-compact.md"
   - "agents/senior-product-manager.md"
-  - "agents/senior-security-engineer-compact.md"
   - "agents/senior-security-engineer.md"
-  - "agents/senior-site-reliability-engineer-compact.md"
   - "agents/senior-site-reliability-engineer.md"
-  - "agents/senior-software-engineer-compact.md"
   - "agents/senior-software-engineer.md"
-  - "agents/senior-solutions-architect-compact.md"
   - "agents/senior-solutions-architect.md"
-  - "agents/senior-technical-writer-compact.md"
   - "agents/senior-technical-writer.md"
-  - "agents/senior-test-engineer-compact.md"
   - "agents/senior-test-engineer.md"
   - "bin/lib/contracts.sh"
   - "bin/oj-helper"
@@ -85,7 +78,26 @@ files:
   - "platform-defaults.yaml"
   - "README.md"
   - "reference/communication-standards.md"
+  - "reference/compact/senior-business-analyst.md"
+  - "reference/compact/senior-data-architect.md"
+  - "reference/compact/senior-data-scientist.md"
+  - "reference/compact/senior-devops-engineer.md"
+  - "reference/compact/senior-distinguished-engineer.md"
+  - "reference/compact/senior-engineering-consultant.md"
+  - "reference/compact/senior-enterprise-architect.md"
+  - "reference/compact/senior-executive-leadership-coach.md"
+  - "reference/compact/senior-ml-engineer.md"
+  - "reference/compact/senior-product-manager.md"
+  - "reference/compact/senior-security-engineer.md"
+  - "reference/compact/senior-site-reliability-engineer.md"
+  - "reference/compact/senior-software-engineer.md"
+  - "reference/compact/senior-solutions-architect.md"
+  - "reference/compact/senior-technical-writer.md"
+  - "reference/compact/senior-test-engineer.md"
   - "reference/dev-mode.md"
+  - "reference/execution-protocol.md"
+  - "reference/expert-index.md"
+  - "reference/expert-preamble.md"
   - "reference/failure-protocol.md"
   - "reference/file-patterns.md"
   - "reference/project-scaffolding.md"
@@ -151,7 +163,11 @@ hooks_json_shape:
 skill_frontmatter_required:
   - "description"
 
-# Layer 4: agent counts — 16 full + 16 compact (m.1 contract)
+# Agent counts — documentary only (NOT asserted by structural-diff.sh;
+# the file-set list above is the enforced invariant). As of 0.1.0 the 16
+# compact profiles moved OUT of agents/ to reference/compact/<name>.md, so
+# agents/ now registers exactly the 16 full profiles and nothing else.
 agent_counts:
-  full: 16
-  compact: 16
+  full: 16            # agents/<name>.md
+  compact: 16         # reference/compact/<name>.md (moved from agents/ in 0.1.0)
+  compact_location: "reference/compact/"

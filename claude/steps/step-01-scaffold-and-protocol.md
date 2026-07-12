@@ -44,13 +44,13 @@ Create these directories at the plugin root (initially empty, populated in later
 ```
 <plugin-root>/
 ├── CONDUCTOR.md                 (generate in this step)
-├── agents/                      (16 full + 16 *-compact.md profiles; flat layout)
+├── agents/                      (16 full profiles only — <name>.md)
 ├── templates/                   (5 deliverable templates)
 ├── skills/                      (5 SKILL.md files in directory-per-skill form)
-└── reference/                   (8 reference files)
+└── reference/                   (reference files, incl. execution-protocol.md, expert-preamble.md, expert-index.md, and compact/<name>.md)
 ```
 
-Compact profiles use the flat `*-compact.md` suffix at `agents/` root — there is no nested `agents/compact/` subdirectory in plugin form.
+Only the 16 FULL expert profiles live at `agents/<name>.md`. Non-agent-definition files that formerly sat under `agents/` now live under `reference/`: the shared preamble is `reference/expert-preamble.md`, the roster index is `reference/expert-index.md`, and the 16 compact profiles are `reference/compact/<name>.md` (nested under `reference/`, with the `-compact` suffix dropped from each basename). There is NO `agents/*-compact.md` sibling layout and NO nested `agents/compact/` subdirectory in plugin form.
 
 ### 2. Core Manager Protocol (`CONDUCTOR.md`)
 
@@ -74,9 +74,11 @@ All references to plugin-internal files (`agents/`, `reference/`, `skills/`, `te
 
 Correct examples (use these exact forms when emitting plugin-internal paths in CONDUCTOR.md prose, tables, and code blocks):
 
-- `` `${CLAUDE_PLUGIN_ROOT}/agents/index.md` ``
-- `` `${CLAUDE_PLUGIN_ROOT}/agents/_preamble.md` ``
-- `` `${CLAUDE_PLUGIN_ROOT}/agents/*-compact.md` ``
+- `` `${CLAUDE_PLUGIN_ROOT}/reference/expert-index.md` ``
+- `` `${CLAUDE_PLUGIN_ROOT}/reference/expert-preamble.md` ``
+- `` `${CLAUDE_PLUGIN_ROOT}/reference/compact/<name>.md` ``
+- `` `${CLAUDE_PLUGIN_ROOT}/agents/<name>.md` `` (full profiles only)
+- `` `${CLAUDE_PLUGIN_ROOT}/reference/execution-protocol.md` ``
 - `` `${CLAUDE_PLUGIN_ROOT}/reference/stakeholder-guide.md` ``
 - `` `${CLAUDE_PLUGIN_ROOT}/reference/workflow-stages.md` ``
 - `` `${CLAUDE_PLUGIN_ROOT}/reference/worked-examples.md` ``
@@ -93,7 +95,7 @@ You are a **Senior Technical Project Manager** — you orchestrate expert agents
 
 You lead and coordinate expert sub-agents, synthesize their feedback, and drive toward excellence through structured collaboration. You and your expert team are AI agent personas with no persistent memory between sessions. Recommendations may require validation against actual organizational constraints or real-world data.
 
-**Your responsibilities:** Coordinate expert agents to review and improve work. Maintain and prioritize the backlog (issue tracker when configured, or `.claude/BACKLOG.md`). Ensure peer review on all Moderate/Complex work. Drive consensus while capturing dissenting views. Conduct retrospectives for Complex engagements. Prompt the user for decisions. Select appropriate stakeholder perspectives using `${CLAUDE_PLUGIN_ROOT}/agents/index.md`.
+**Your responsibilities:** Coordinate expert agents to review and improve work. Maintain and prioritize the backlog (issue tracker when configured, or `.claude/BACKLOG.md`). Ensure peer review on all Moderate/Complex work. Drive consensus while capturing dissenting views. Conduct retrospectives for Complex engagements. Prompt the user for decisions. Select appropriate stakeholder perspectives using `${CLAUDE_PLUGIN_ROOT}/reference/expert-index.md`.
 ```
 
 #### Triage Requirement (Section 2)
@@ -102,6 +104,11 @@ The Section 2 "Triage Requirement" subsection MUST emit the qualified statement 
 Assess every request routed through the cycle-runner / task-lifecycle commands (`/oj:cycle`, `/oj:run-task`) before engagement. Two dimensions: execution model and stakeholder identification. Free-form messages outside an invoked command receive a direct response and do not require triage.
 ```
 Do NOT emit the legacy unqualified "Assess every incoming request before engagement" wording — that form predates the explicit-invocation activation model documented in `F16-architecture.md` §Activation Mechanism and is now considered a regen-fidelity drift bug.
+
+**Trivial fast-path (tier 0)**: Immediately after the qualified triage-requirement statement, the Section 2 "Triage Requirement" subsection MUST emit a short Trivial fast-path clause. A request is **Trivial** when ALL of the following hold: it is typo-scale (a mechanical, near-zero-risk edit — fix a typo, correct a broken link, bump an obvious constant), it involves NO design choices, and its causal chain terminates before production (nothing it touches can reach a running system). A Trivial request requires **zero mandatory stakeholders** — the manager may execute it inline without spawning the mandatory Product + Distinguished pair. Everything above Trivial (Simple and up) retains the mandatory Product Manager + Distinguished Engineer pair. Emit wording equivalent to:
+```
+Trivial (tier 0): typo-scale change, no design choices, causal chain terminates before production. Zero mandatory stakeholders — execute inline. Any request that is not Trivial is Simple or above and carries the mandatory Product + Distinguished pair.
+```
 
 #### Self-Check Gate (Section 2)
 ```
@@ -140,8 +147,10 @@ Options: Simplify scope | Proceed with documented risks | Pause for info | Aband
 | 3 | Could impact production stability? | [ ] |
 | 4 | Significant cost or resource commitment? | [ ] |
 
-**Scoring**: 0-1 = Simple (inline), 2-3 = Moderate (Consult primitive), 4 = Complex (Convene primitive)
+**Scoring**: Trivial (tier 0) = typo-scale, no design choices, causal chain terminates before production (execute inline, zero mandatory stakeholders); 0-1 = Simple (inline); 2-3 = Moderate (Consult primitive); 4 = Complex (Convene primitive)
 ```
+
+The Trivial branch is tier 0: it sits below Simple and is the ONLY tier with zero mandatory stakeholders. The mandatory Product Manager + Distinguished Engineer pair applies at Simple and above. Trivial requires all three conditions (typo-scale, no design choices, causal chain terminates before production); if any one fails, the request is Simple or higher and gets the mandatory pair.
 
 #### Domain Signals Table (Section 3)
 ```
@@ -173,93 +182,46 @@ CONCERN: [Primary concern, or "None — [reason]"]
 ```
 ````
 
-#### Spawn Formats (Section 4 — Moderate Tier)
-All three phase formats must match specification exactly:
-- Phase 1: `<!-- oj-expert: [profile-filename] -->` marker + stakeholder analysis instructions
-- Phase 2: Lead implementation with synthesized findings
-- Phase 3: Adversarial review with failure mode testing
+#### PERSPECTIVE Block — Simple Tier (Section 4 Stakeholder Perspectives — STAYS in CONDUCTOR)
+The Simple-tier inline PERSPECTIVE rendering block (see the "PERSPECTIVE Block Format (Section 4 — Simple Tier)" EXACT element above) is CORE and stays in CONDUCTOR under Stakeholder Perspectives. Everything below (spawn formats, handback formats, quality gates, model selection, tier-aware loading and reference/template tables) is MOVED to `reference/execution-protocol.md` and rendered by step-04 — CONDUCTOR does NOT emit these bodies. The Execution section (Section 5) names them and points to the reference file.
 
-#### Handback Formats (Section 5)
+#### MOVED — Spawn Formats, Handback Formats, Quality Gates, Model Selection (now in `reference/execution-protocol.md`)
 
-Each format is preceded by a section header and a [EXACT] anchor line (the literal text immediately before the fenced code block). These anchors are load-bearing — validation scripts locate the handback fenced blocks by matching these anchors, so the generator MUST emit them verbatim.
+The following EXACT elements are NO LONGER emitted into CONDUCTOR. They render into `reference/execution-protocol.md` in step-04 (which owns their verbatim reproduction and the load-bearing anchor lines). They are listed here only so the two step prompts stay in sync — step-01 must NOT reproduce their bodies:
 
-**Simple Tier Format**:
+- **Spawn Formats (Moderate Tier)**: Phase 1 `<!-- oj-expert: [profile-filename] -->` marker + stakeholder analysis; Phase 2 lead implementation with synthesized findings; Phase 3 adversarial review with failure-mode testing.
+- **Handback Formats**: Simple compressed (anchor line `Compressed format (~5 lines):` + 5-field block) and Moderate/Complex full (anchor line `Full format (9 fields):` + 9-field block). Both anchor lines are [EXACT] and are validated in the reference file, not in CONDUCTOR.
+- **Quality Gate Counts**: Simple 2 items, Moderate 6 items, Complex 9 items.
+- **Model Selection Section**: the [EXTERNAL] tier table from `platform-snapshot.yaml`, the function-first selection rules (5 bullets), the per-role default model table, the worked-example anchors, and the effort-out-of-scope note.
 
-Under `### Simple Tier Format`, emit this anchor line verbatim (character-for-character, including the tilde and trailing colon):
-
-```
-Compressed format (~5 lines):
-```
-
-Immediately after the anchor line (with one blank line between), emit a fenced code block containing the 5-field compressed handback:
-
-````
-```
-HANDBACK: [Role] | STATUS: [Complete|Iterate|Blocked|Escalate] | CONFIDENCE: [High|Med|Low]
-DELIVERABLE: [What was produced]
-RECOMMENDATION: [1-2 sentences including rationale]
-STRONGEST OBJECTION: [Best counterargument]
-NEXT: [Actions]
-```
-````
-
-**Moderate/Complex Tier Format**:
-
-Under `### Moderate/Complex Tier Format`, emit this anchor line verbatim (character-for-character, including the parenthesized field count and trailing colon):
-
-```
-Full format (9 fields):
-```
-
-Immediately after the anchor line (with one blank line between), emit a fenced code block containing the 9-field full handback (HANDBACK, STATUS, DELIVERABLE, RECOMMENDATION, RATIONALE, STRONGEST OBJECTION, FALSIFIER, CONFIDENCE, CAVEATS, NEXT ACTIONS — exactly as specified in `D40-quality-framework.md` § Handback Protocol).
-
-**Both anchor lines are [EXACT]**: "Compressed format (~5 lines):" and "Full format (9 fields):" must appear verbatim in the generated CLAUDE.md. Do not paraphrase to "5-line compressed format" or "9-field full format" — validation scans the literal anchor text before the fenced block.
-
-#### Quality Gate Counts (Section 6)
-- Simple Tier: **2 items**
-- Moderate Tier: **6 items**
-- Complex Tier: **9 items**
-
-#### Model Selection Section (Section 7)
-Three models with exact when-to-use criteria and examples. **[EXTERNAL]** — render the tier table from `platform-snapshot.yaml` `models` section rather than hardcoding model names and cost ratios. The symbolic ids (`haiku`, `sonnet`, `opus`) and their tier mappings (`routine`, `implementation`, `reasoning`) are platform facts from Layer 0. The human-readable when-to-use descriptions and task examples are [DERIVED] from Chain 7 (capability-cost optimization) and may be authored inline.
-
-After the tier table and "When in doubt" guidance, the generator MUST also emit the **function-first selection rules** and the **per-role default model table** specified in `juntospec/D32-execution-models.md` §6 (the canonical source). Render both with the concrete model ids resolved against `platform-snapshot.yaml` (substitute `{tier-routine}` → `haiku`, `{tier-implementation}` → `sonnet`, `{tier-reasoning}` → `opus`). Required structure:
-
-1. **Function-first selection rules** (subsection under `### Model Selection`): emit the 5 bullets from D32 §6 § Function-First Selection Rules, with abstract tier tokens replaced by their concrete model ids:
-   - Adversarial reviewer slot (any role) → strongest tier (always wins over role default).
-   - Complex-tier lead implementer → strongest tier.
-   - Moderate-tier lead implementer → implementation tier by default; escalate to reasoning tier when implementation is high-risk or carries unresolved TENSION.
-   - Phase-1 stakeholder analysts → implementation tier; routine tier for bounded/docs-only lenses.
-   - Specialists on a domain trigger → implementation tier; escalate to reasoning tier when their domain is the decisive risk (security, reliability, destructive data).
-2. **Per-role default table** (subsection under `### Model Selection`): emit the role→tier mapping from D32 §6 § Per-Role Default Tier with concrete model ids. Three rows: strongest tier (Distinguished Engineer, Security Engineer, Site Reliability Engineer, Engineering Consultant); implementation tier (Software Engineer, Solutions Architect, DevOps Engineer, Test Engineer, Data Architect, Data Scientist, ML Engineer, Enterprise Architect, Business Analyst, Product Manager, Executive Leadership Coach); routine tier (Technical Writer — with the documented escalation when user-facing prose is the deliverable). Frame the table explicitly as **adjustable defaults**. The override qualifier MUST make the function rules authoritative whenever ANY of them applies (NOT narrowed to only the reviewer slot or Complex-tier lead): emit wording equivalent to "the function rules above always take precedence when any of them applies (reviewer-slot, Complex-tier lead, Moderate-tier lead, Phase-1 analyst, or domain-trigger specialist); the per-role default below fires only when no function rule matches the spawn." Title the subsection "Per-Role Default Model (adjustable; function rules always win)".
-3. **Worked-example anchors**: emit a one-line back-pointer to `${CLAUDE_PLUGIN_ROOT}/reference/worked-examples.md` Example 2, noting that the analysts-on-`sonnet` / reviewer-on-`opus` split there is the general pattern. Then emit a **second anchor** demonstrating the reviewer-slot override on a NON-opus-default role, equivalent to: "a Senior Technical Writer (role default: `haiku`) or a Senior Software Engineer (role default: `sonnet`) spawned as the adversarial reviewer runs on `opus` — the reviewer-slot rule wins over the role default." Make explicit that the reviewer slot is `opus` because of its function, not the reviewer's role, and that Example 2's Security-Engineer-on-`opus` reviewer must NOT be read as that role's default. This second anchor is Claude-generated artifact text only; it does NOT belong in the abstract spec (juntospec stays in tier vocabulary).
-4. **Effort out-of-scope note** (subsection): emit a short paragraph explaining that per-expert effort is not a controllable parameter today — expert profiles are injected into `general-purpose` Task spawns via the `SubagentStart` hook (`oj-helper inject-profile`), the Task tool does NOT read `${CLAUDE_PLUGIN_ROOT}/agents/*.md` as subagent definitions (so frontmatter on those files is a no-op), and there is no per-invocation effort knob on that spawn surface. Effort is session-level (the user's `/effort` setting). Per-expert effort tiering would require re-architecting experts as native, distinct subagent types — defer.
-
-#### Tier-Aware Context Loading Table (Section 9)
-Three tiers with exact loading instructions.
-
-#### Reference Files Table (Section 9)
-8 reference files with exact names and content descriptions.
-
-#### Templates Table (Section 9)
-5 templates with exact names and when-to-use descriptions.
+step-04 § execution-protocol.md is the authoritative generation note for all of the above.
 
 ---
 
 ### STRUCTURAL Elements (Required Organization)
 
-#### Section Organization
-CLAUDE.md must contain these 10 major sections in order:
+#### Section Organization (SLIM CONDUCTOR — core sections only)
+
+CONDUCTOR.md is deliberately slim: it carries only the CORE sections the manager needs resident in every session. The heavier execution mechanics are moved to an on-demand reference file (`reference/execution-protocol.md`, generated in step-04) and loaded just-in-time before Moderate/Complex execution.
+
+CONDUCTOR.md must contain these CORE major sections in order:
 1. Role Declaration
-2. Absolute Constraints (4 subsections: Delegation Boundary, Triage Requirement, Circuit Breaker, External Artifact Hygiene)
-3. Two-Dimensional Triage (2 subsections: A. Execution Model, B. Stakeholder Identification)
-4. Execution Models (3 subsections: Simple, Moderate, Complex)
-5. Handback Protocol (formats, status, confidence, calibration)
-6. Quality Gates (3 subsections: Simple/Moderate/Complex tiers)
-7. Agent Spawning (2 subsections: Spawning Pattern, Model Selection)
-8. Stakeholder Perspectives (mandatory pair + domain stakeholders)
-9. Reference and Operations (3 subsections: issue tracker Bootstrap, Tier-Aware Context Loading, Reference Files, Templates)
-10. Definition of Done (4 subsections: Simple/Moderate/Complex tiers, Verifying Deliverables, Incorporating Lessons)
+2. Absolute Constraints (4 subsections: Delegation Boundary — incl. Self-Check + Scope; Triage Requirement — incl. the Trivial fast-path; Circuit Breaker + Adaptive Signals; External Artifact Hygiene)
+3. Two-Dimensional Triage (full — 2 subsections: A. Execution Model, B. Stakeholder Identification)
+4. Stakeholder Perspectives (mandatory Product + Distinguished pair + Trivial note (zero mandatory stakeholders) + pointer to `${CLAUDE_PLUGIN_ROOT}/reference/expert-index.md`; PERSPECTIVE block format for Simple-tier inline rotation)
+5. Execution — Tier Overview and Just-in-Time Loading (NEW; see below)
+
+**REMOVED from CONDUCTOR (now rendered into `reference/execution-protocol.md` by step-04)**: the full Execution Models mechanics (Simple/Moderate/Complex spawn formats and phase detail), the Handback Protocol (formats, status, confidence, calibration), the Quality Gates (Simple/Moderate/Complex item lists), Agent Spawning + Model Selection (spawning pattern, function-first rules, per-role default table, effort note), the Definition of Done, and the Reference-and-Operations detail (issue-tracker bootstrap, tier-aware context loading table, reference-files table, templates table). CONDUCTOR references these via the new Execution section's just-in-time load pointer; it MUST NOT reproduce their bodies.
+
+#### NEW Section 5 — Execution: Tier Overview and Just-in-Time Loading
+
+Emit a SHORT section (not the full mechanics). Required content:
+
+- **One paragraph per tier** (Trivial, Simple, Moderate, Complex) giving the one-line "what happens" summary only — Trivial: execute inline, zero stakeholders; Simple: inline perspective rotation over the mandatory pair (+ any domain stakeholders); Moderate: 3-phase Consult (stakeholder analysis → lead implementation → adversarial review) with synthesis gate and pre-mortem; Complex: parallel team via Convene (with the documented Convene→Consult fallback), user checkpoint, retrospective. Do NOT reproduce the spawn formats, handback formats, quality-gate lists, or model-selection tables here — name them and point to the reference file.
+- **Reviewer scope (Item 3, applies to the Moderate/Complex review summary)**: when the Moderate paragraph mentions adversarial review, frame the reviewer as flagging ONLY correctness/requirements-affecting gaps; "no material concerns" is an acceptable review outcome at all tiers. The full review protocol (including the mandatory FAILURE MODES TESTED section) renders into `reference/execution-protocol.md` / `reference/workflow-stages.md` — CONDUCTOR's summary must not contradict that scoping (no "find something wrong at any cost" framing).
+- **Just-in-time load instruction**: an explicit directive that the manager MUST load `${CLAUDE_PLUGIN_ROOT}/reference/execution-protocol.md` before executing any Moderate or Complex item (it contains the full execution models, handback protocol, quality gates, agent spawning + model selection, and definition of done). Simple and Trivial tiers do not require the load.
+
+Keep the Convene→Consult Fallback design intent (below) satisfied: the CONDUCTOR Execution section states the fallback exists and points to the reference file for the mechanics; the load-bearing Fallback clause body itself renders into `reference/execution-protocol.md` (step-04). The CONDUCTOR pointer plus the reference-file body together preserve the guarantee.
 
 #### Subsection Headers
 Use `##` for major sections, `###` for subsections.
@@ -284,7 +246,7 @@ Capture the principle from Axiom 4: Compact profiles for Simple tier, tier-aware
 Capture the principle from Axiom 5: Don't force resolution of genuine trade-offs. Forward tensions as design constraints.
 
 #### Convene Fallback (Axiom 8 — Graceful Degradation)
-The Section 4 "Complex: Parallel Team (Swarm)" subsection MUST include a **Fallback** clause documenting the Convene→Consult degradation defined in `D32-execution-models.md` §3 Fallback. Required content:
+The Convene→Consult degradation defined in `D32-execution-models.md` §3 Fallback is load-bearing. In the slim CONDUCTOR it is NOT rendered in full — the full **Fallback** clause body renders into `reference/execution-protocol.md`'s "Complex: Parallel Team (Swarm)" subsection (step-04). CONDUCTOR's NEW Execution section (Section 5) MUST state that Complex degrades gracefully via a documented Convene→Consult fallback and point to `${CLAUDE_PLUGIN_ROOT}/reference/execution-protocol.md` for the mechanics. The required content below is the authoritative description of what step-04 must render into the reference file (and what CONDUCTOR's pointer promises):
 
 - When `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` is unset (or the host disables the agent-teams feature), `TeamCreate`, `TeamDelete`, `shutdown_request`, and `SendMessage` are unavailable.
 - In that case, Complex tier degrades to a deputy-coordinator parallel-Task-tool fan-out: spawn ONE general-purpose deputy coordinator via the Task tool, brief it with the full stakeholder plan; the deputy spawns the stakeholder analyses as parallel Task-tool calls and synthesizes via the handback protocol only (no inter-agent SendMessage relay).
@@ -292,7 +254,7 @@ The Section 4 "Complex: Parallel Team (Swarm)" subsection MUST include a **Fallb
 - Skills detect availability via `oj-helper agent-teams-check` (which always exits 0 and reports `{"ok":true,"available":true|false,"reason":"env"|"env_unset"}`); the branch selector reads `.available` from the JSON, not the exit code.
 - **Runtime backstop (probe is a hint, not a guarantee)**: the generated Fallback clause MUST instruct the manager that `agent-teams-check` inspects only the env var, so an environment where the var is set but `TeamCreate` is actually disabled at runtime (enterprise policy, future flag retirement) will steer onto the team branch incorrectly. If the team branch is taken and the first `TeamCreate` call — or any agent-teams-gated tool (`TeamCreate`, `TeamDelete`, `SendMessage`, `shutdown_request`) — raises "Unknown tool" / "tool unavailable" at runtime, the manager MUST NOT abort the item; it MUST fall through to the deputy-coordinator parallel-Task-tool fan-out (handback-only synthesis, no Inform). The runtime signal is authoritative over the probe; the User Checkpoint promised at triage MUST still fire.
 
-This Fallback clause is load-bearing — without it, adopters whose environments disable the agent-teams flag hit "Unknown tool: TeamCreate" at the Complex-tier execution step instead of falling through to the documented degradation. The runtime backstop is equally load-bearing — the env-var probe alone cannot detect a runtime-disabled tool, so without the backstop the User Checkpoint promised at triage would silently die when `TeamCreate` raises mid-Complex.
+This Fallback clause is load-bearing — without it, adopters whose environments disable the agent-teams flag hit "Unknown tool: TeamCreate" at the Complex-tier execution step instead of falling through to the documented degradation. The runtime backstop is equally load-bearing — the env-var probe alone cannot detect a runtime-disabled tool, so without the backstop the User Checkpoint promised at triage would silently die when `TeamCreate` raises mid-Complex. Because the clause now lives in `reference/execution-protocol.md`, CONDUCTOR's just-in-time load directive (Section 5) is what guarantees the manager has the fallback in context before Complex execution begins — the load instruction is therefore itself load-bearing.
 
 ---
 
@@ -305,12 +267,15 @@ After generation, verify:
 - [ ] `agents/` directory exists at plugin root (empty at this stage)
 - [ ] `templates/` directory exists at plugin root (empty at this stage)
 - [ ] `skills/` directory exists at plugin root (empty at this stage)
-- [ ] `reference/` directory exists at plugin root (empty at this stage)
+- [ ] `reference/` directory exists at plugin root (empty at this stage; will hold execution-protocol.md, expert-preamble.md, expert-index.md, compact/, and the on-demand reference files)
 - [ ] NO `src/` wrapper directory exists (plugin host loads directly from plugin root)
-- [ ] NO `agents/compact/` subdirectory exists (compact profiles use flat `*-compact.md` suffix at `agents/` root)
+- [ ] NO `agents/compact/` subdirectory exists, and NO `agents/*-compact.md` files (compact profiles live at `reference/compact/<name>.md`; only full profiles live under `agents/`)
 
-### CONDUCTOR.md Structure
-- [ ] Contains all 10 major sections in correct order
+### CONDUCTOR.md Structure (SLIM — core sections only)
+- [ ] Contains the 5 CORE major sections in correct order (Role Declaration; Absolute Constraints; Two-Dimensional Triage; Stakeholder Perspectives; Execution — Tier Overview and Just-in-Time Loading)
+- [ ] Does NOT reproduce the moved sections' bodies (Execution Models mechanics, Handback Protocol, Quality Gates, Agent Spawning + Model Selection, Definition of Done, Reference-and-Operations detail) — those live in `reference/execution-protocol.md`
+- [ ] Execution section includes a one-paragraph-per-tier overview (Trivial/Simple/Moderate/Complex) and an explicit directive to load `${CLAUDE_PLUGIN_ROOT}/reference/execution-protocol.md` before Moderate/Complex execution
+- [ ] Triage Requirement subsection emits the Trivial fast-path clause (zero mandatory stakeholders; typo-scale, no design choices, causal chain terminates before production) and states the mandatory Product + Distinguished pair applies at Simple and above
 - [ ] Opening lines match specification exactly (role declaration)
 - [ ] Triage Requirement (Section 2) emits the QUALIFIED statement scoping triage to cycle-runner / task-lifecycle command invocations (`/oj:cycle`, `/oj:run-task`); does NOT emit the legacy unqualified "Assess every incoming request" form
 - [ ] Self-Check questions present verbatim (3 questions)
@@ -318,27 +283,23 @@ After generation, verify:
 - [ ] Adaptive signals table present (3 rows)
 - [ ] Triage criteria table present (4 criteria with checkboxes)
 - [ ] Domain signals table present (9 rows)
-- [ ] PERSPECTIVE block format present verbatim
-- [ ] All three spawn formats present (Phase 1/2/3 for Moderate tier)
-- [ ] Both handback formats present (Simple compressed + Moderate/Complex full)
-- [ ] Quality gate counts correct: Simple (2), Moderate (6), Complex (9)
-- [ ] Model selection table present with entries matching `platform-snapshot.yaml` model roster (verify symbolic ids, tiers, and cost ratios — do not hardcode haiku/sonnet/opus as pass criteria)
-- [ ] Model Selection section includes function-first selection rules (5 bullets: reviewer-slot, Complex lead, Moderate lead, Phase-1 analysts, specialists), per-role default model table (3 tiers covering Distinguished Engineer through Technical Writer), worked-example back-pointer to `reference/worked-examples.md` Example 2, and an effort-out-of-scope note explaining that per-expert effort is not controllable today (Task tool does not read `agents/*.md` frontmatter; effort is session-level)
-- [ ] Tier-aware context loading table present (3 tiers)
-- [ ] Reference files table present (8 files)
-- [ ] Templates table present (5 templates)
+- [ ] PERSPECTIVE block format present verbatim (Simple-tier inline rotation, under Stakeholder Perspectives)
+- [ ] Stakeholder Perspectives points to `${CLAUDE_PLUGIN_ROOT}/reference/expert-index.md` and notes the Trivial tier carries zero mandatory stakeholders
+- [ ] CONDUCTOR does NOT contain the spawn formats, handback formats, quality-gate item counts, or the model-selection table (those are validated in `reference/execution-protocol.md`, not here)
 
 ### Format String Accuracy
-- [ ] All [EXACT] items from specification reproduced character-for-character
-- [ ] Thresholds match: 0-1/2-3/4 scoring, 4+/5+ stakeholder escalation
-- [ ] Quality gate item counts match exactly
+- [ ] All [EXACT] items that remain in CONDUCTOR (triage tables, self-check, circuit breaker, adaptive signals, domain signals, escalation guard, Simple-tier PERSPECTIVE block) reproduced character-for-character
+- [ ] Thresholds match: Trivial (tier 0) / 0-1 Simple / 2-3 Moderate / 4 Complex scoring, 4+/5+ stakeholder escalation
+- [ ] Moved [EXACT] items (handback anchor lines, quality-gate counts) are validated in `reference/execution-protocol.md`, not in CONDUCTOR
 
 ### Cross-References
 - [ ] Generated CONDUCTOR.md contains ≥1 reference using `${CLAUDE_PLUGIN_ROOT}/` syntax for plugin-internal files (`agents/`, `reference/`, `skills/`, `templates/`, `hooks/`, `bin/`, `docs/`)
 - [ ] Generated CONDUCTOR.md contains ZERO `~/.claude/` references (legacy adopter-HOME form is banned for plugin-internal paths)
 - [ ] Generated CONDUCTOR.md contains ZERO bare relative plugin-internal paths (e.g., `` `agents/index.md` ``, `` `reference/stakeholder-guide.md` `` without the `${CLAUDE_PLUGIN_ROOT}/` prefix)
-- [ ] References to `${CLAUDE_PLUGIN_ROOT}/agents/index.md` present
+- [ ] References to `${CLAUDE_PLUGIN_ROOT}/reference/expert-index.md` present (roster/selection index; NOT `agents/index.md`)
+- [ ] References to `${CLAUDE_PLUGIN_ROOT}/reference/execution-protocol.md` present (the just-in-time load pointer in the Execution section)
 - [ ] References to `${CLAUDE_PLUGIN_ROOT}/reference/` files present
+- [ ] Any full-profile reference uses `${CLAUDE_PLUGIN_ROOT}/agents/<name>.md`; compact-profile references (if any) use `${CLAUDE_PLUGIN_ROOT}/reference/compact/<name>.md` — NO `agents/*-compact.md`
 - [ ] References to `.claude/BACKLOG.md` present (project-local — keep as-is, not plugin-internal)
 - [ ] References to `oj-helper` commands present
 
@@ -354,6 +315,6 @@ After generation, verify:
 
 After completing this step, you will have:
 - Plugin-tree-direct directory structure (`agents/`, `templates/`, `skills/`, `reference/` at plugin root)
-- Complete manager protocol (`CONDUCTOR.md` at plugin root, ~10KB)
+- Slim manager protocol (`CONDUCTOR.md` at plugin root) carrying only the core sections; execution mechanics deferred to `reference/execution-protocol.md` (generated in step-04)
 
 These outputs are required inputs for steps 02 and 03.

@@ -18,8 +18,8 @@ Read these spec files before generating:
 - `{OJ_SOURCE}/agents/senior-software-engineer-compact.md` (representative compact profile; flat `*-compact.md` suffix layout)
 
 ### Required Context from Previous Steps
-- `agents/_preamble.md` (generated in step 02) — defines AI agent context and 16-section structure
-- `CONDUCTOR.md` (generated in step 01) — defines handback protocol and quality standards
+- `reference/expert-preamble.md` (generated in step 02) — defines AI agent context and 16-section structure
+- `CONDUCTOR.md` (generated in step 01) — defines the manager protocol core; handback protocol and quality standards live in `reference/execution-protocol.md` (generated in step 04)
 
 ---
 
@@ -50,30 +50,49 @@ Generate 16 full expert profiles at `agents/` (flat plugin-tree-direct layout �
 
 ### 2. Compact Profiles (16 files)
 
-Generate 16 compact variants, each ~30 lines, <2KB. Flat layout uses the `-compact.md` suffix at `agents/` root (NOT a nested `agents/compact/` subdirectory):
+Generate 16 compact variants, each ~30 lines, <2KB. Compact profiles live under `reference/compact/` with the `-compact` suffix DROPPED from each basename (NOT under `agents/`, NOT with a `-compact.md` suffix, NOT in a nested `agents/compact/` subdirectory). The basename matches the full profile's basename; only the directory differs:
 
-- `agents/senior-distinguished-engineer-compact.md`
-- `agents/senior-product-manager-compact.md`
-- `agents/senior-security-engineer-compact.md`
-- `agents/senior-data-architect-compact.md`
-- `agents/senior-solutions-architect-compact.md`
-- `agents/senior-devops-engineer-compact.md`
-- `agents/senior-data-scientist-compact.md`
-- `agents/senior-ml-engineer-compact.md`
-- `agents/senior-enterprise-architect-compact.md`
-- `agents/senior-business-analyst-compact.md`
-- `agents/senior-technical-writer-compact.md`
-- `agents/senior-engineering-consultant-compact.md`
-- `agents/senior-executive-leadership-coach-compact.md`
-- `agents/senior-test-engineer-compact.md`
-- `agents/senior-site-reliability-engineer-compact.md`
-- `agents/senior-software-engineer-compact.md`
+- `reference/compact/senior-distinguished-engineer.md`
+- `reference/compact/senior-product-manager.md`
+- `reference/compact/senior-security-engineer.md`
+- `reference/compact/senior-data-architect.md`
+- `reference/compact/senior-solutions-architect.md`
+- `reference/compact/senior-devops-engineer.md`
+- `reference/compact/senior-data-scientist.md`
+- `reference/compact/senior-ml-engineer.md`
+- `reference/compact/senior-enterprise-architect.md`
+- `reference/compact/senior-business-analyst.md`
+- `reference/compact/senior-technical-writer.md`
+- `reference/compact/senior-engineering-consultant.md`
+- `reference/compact/senior-executive-leadership-coach.md`
+- `reference/compact/senior-test-engineer.md`
+- `reference/compact/senior-site-reliability-engineer.md`
+- `reference/compact/senior-software-engineer.md`
 
 ---
 
 ## Key Requirements
 
 ### EXACT Elements (Apply to All Profiles)
+
+#### YAML Frontmatter on FULL Profiles (registration hygiene — Item 4-REDUCED)
+
+Every one of the 16 FULL profiles (`agents/<name>.md`) MUST begin with a YAML frontmatter block delimited by `---` on the first line and `---` closing the block, containing EXACTLY two fields:
+
+- `name:` — the profile basename (e.g., `senior-software-engineer`), matching the filename without extension.
+- `description:` — a single-sentence delegation trigger derived from that profile's own **Engagement Triggers** (Section 15) content: a concise statement of when the manager should delegate to this expert.
+
+Example (Senior Software Engineer):
+```yaml
+---
+name: senior-software-engineer
+description: Delegate when implementation quality, refactoring scope, code review, or hands-on development approach is the decisive concern.
+---
+```
+
+Do NOT emit any other frontmatter keys — specifically NO `model:`, NO `effort:`, NO `tools:` fields (those are explicitly out of scope for this release; the general-purpose spawn model and the SubagentStart matcher are unchanged). Frontmatter goes ONLY on the full profiles; compact profiles under `reference/compact/` do NOT get frontmatter.
+
+The full profile's frontmatter is stripped before injection as additionalContext by `oj-helper inject-profile` (step-07) — the profile body (from the opening line onward) is what gets injected. Emitting the two-field block is still required for registration hygiene even though the Task tool does not read `agents/*.md` as native subagent definitions this release.
 
 #### 16-Section Structure
 Every full profile MUST contain these 16 sections in this exact order:
@@ -100,12 +119,14 @@ Every full profile starts with:
 You are a **[Role Title]** AI agent with expertise equivalent to [X]+ years of [domain] experience...
 ```
 
-Followed by:
+Followed by (immediately after the YAML frontmatter block described above):
 ```
-> See `_preamble.md` for shared AI Agent Context and standards.
+> See `${CLAUDE_PLUGIN_ROOT}/reference/expert-preamble.md` for shared AI Agent Context and standards.
 
 **Role-Specific Caveats**: [Domain-specific limitations and uncertainty acknowledgment]
 ```
+
+(The preamble relocated from `agents/_preamble.md` to `reference/expert-preamble.md` in step-02 — reference the new path.)
 
 #### Inter-Expert Collaboration Table (Section 6)
 Standard format:
@@ -327,11 +348,13 @@ Each compact profile (~30 lines, <2KB) retains:
 After generation, verify:
 
 ### File Counts
-- [ ] 16 full profiles at `agents/` (no `src/` wrapper; flat plugin-tree-direct layout)
-- [ ] 16 compact profiles at `agents/` using the `-compact.md` suffix (NO nested `agents/compact/` subdirectory)
-- [ ] Each full profile has a corresponding `*-compact.md` sibling at the same `agents/` level
+- [ ] 16 full profiles at `agents/<name>.md` (no `src/` wrapper; plugin-tree-direct layout), each starting with the two-field (`name`, `description`) YAML frontmatter block
+- [ ] 16 compact profiles at `reference/compact/<name>.md` (suffix `-compact` DROPPED; NO `agents/*-compact.md`, NO nested `agents/compact/` subdirectory)
+- [ ] Each full profile `agents/<name>.md` has a corresponding compact `reference/compact/<name>.md` with the same basename
+- [ ] No full profile emits `model:`, `effort:`, or `tools:` frontmatter keys (only `name:` and `description:`)
 
 ### Full Profile Structure (Check 3-4 Profiles)
+- [ ] Begins with YAML frontmatter containing exactly `name:` (basename) and `description:` (one-sentence delegation trigger from Engagement Triggers); no other keys
 - [ ] Contains all 16 sections in order
 - [ ] Section 1 starts with bold role title and AI agent caveats
 - [ ] Section 5 has "When Leading" and "When Supporting" subsections
@@ -365,8 +388,8 @@ After generation, verify:
 - [ ] Adversarial behaviors in compact profiles use active language
 
 ### Cross-References
-- [ ] All profiles reference `_preamble.md`
-- [ ] All compact profiles reference their full profile path
+- [ ] All full profiles reference `${CLAUDE_PLUGIN_ROOT}/reference/expert-preamble.md` (the relocated preamble)
+- [ ] All compact profiles reference their full profile path `${CLAUDE_PLUGIN_ROOT}/agents/<name>.md`
 - [ ] Inter-expert collaboration tables reference other experts by name
 
 ---
@@ -382,8 +405,8 @@ After generation, verify:
 ## Output
 
 After completing this step, you will have:
-- 16 full expert profiles (`agents/*.md` minus the `*-compact.md` siblings, ~8-12KB each)
-- 16 compact variants (`agents/*-compact.md`, ~30 lines, <2KB each)
+- 16 full expert profiles (`agents/<name>.md`, each with two-field YAML frontmatter, ~8-12KB each)
+- 16 compact variants (`reference/compact/<name>.md`, ~30 lines, <2KB each)
 
 Total output: ~160KB for full profiles + ~32KB for compact profiles = ~192KB
 
