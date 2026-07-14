@@ -58,7 +58,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DIFF="${SCRIPT_DIR}/structural-diff.sh"
-LIVE_TREE="${OJ_OUTPUT_DIR:-/Users/brenton/workspace/github.com/openjunto/oj-claude}"
+# Default to the sibling oj-claude checkout resolved from this script's location
+# (<parent>/oj-claude, sibling to juntogen/); override via OJ_OUTPUT_DIR.
+_JG_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+LIVE_TREE="${OJ_OUTPUT_DIR:-$(dirname "${_JG_ROOT}")/oj-claude}"
 
 if [ -t 1 ]; then
     RED=$'\033[0;31m'; GREEN=$'\033[0;32m'; YELLOW=$'\033[1;33m'; CYAN=$'\033[0;36m'; NC=$'\033[0m'

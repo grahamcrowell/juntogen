@@ -41,7 +41,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WRAPPER="${SCRIPT_DIR}/regen-acceptance.sh"
 HELPER_SH="${SCRIPT_DIR}/../../lib/emit-static-plugin-manifest.sh"
-LIVE_TREE="${OJ_CLAUDE_DIR:-/Users/brenton/workspace/github.com/openjunto/oj-claude}"
+# Default to the sibling oj-claude checkout resolved from this script's location
+# (<parent>/oj-claude, sibling to juntogen/); override via OJ_CLAUDE_DIR.
+_JG_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+LIVE_TREE="${OJ_CLAUDE_DIR:-$(dirname "${_JG_ROOT}")/oj-claude}"
 
 if [ -t 1 ]; then
     RED=$'\033[0;31m'; GREEN=$'\033[0;32m'; YELLOW=$'\033[1;33m'; CYAN=$'\033[0;36m'; NC=$'\033[0m'

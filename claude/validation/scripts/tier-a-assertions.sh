@@ -19,9 +19,9 @@
 #     ${OUTPUT_DIR}/scripts/validate-plugin.sh as the gate to coverage drop.
 #
 # USAGE: ./tier-a-assertions.sh [OUTPUT_DIR]
-#        OUTPUT_DIR defaults to /Users/brenton/workspace/github.com/openjunto/
-#                            oj-claude (the canonical hand-cut baseline) when
-#        invoked without an argument and OJ_OUTPUT_DIR is unset.
+#        OUTPUT_DIR defaults to the sibling oj-claude checkout (<parent>/oj-claude,
+#                            resolved from this script's location) when invoked
+#        without an argument and OJ_OUTPUT_DIR is unset.
 #
 # EXIT CODES:
 #   0 - All assertions passed
@@ -58,7 +58,10 @@ info() {
 #   1. positional argument $1 (explicit OUTPUT_DIR)
 #   2. ${OJ_OUTPUT_DIR} env var
 #   3. canonical hand-cut baseline (oj-claude under the openjunto workspace)
-OUTPUT_DIR="${1:-${OJ_OUTPUT_DIR:-/Users/brenton/workspace/github.com/openjunto/oj-claude}}"
+# Default to the sibling oj-claude checkout resolved from this script's location
+# (<parent>/oj-claude, sibling to juntogen/); override via $1 or OJ_OUTPUT_DIR.
+_JG_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+OUTPUT_DIR="${1:-${OJ_OUTPUT_DIR:-$(dirname "${_JG_ROOT}")/oj-claude}}"
 
 if [[ ! -d "${OUTPUT_DIR}" ]]; then
     echo -e "${RED}ERROR${NC} OUTPUT_DIR is not a directory: ${OUTPUT_DIR}"

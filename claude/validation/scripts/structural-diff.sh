@@ -68,7 +68,10 @@ set -euo pipefail
 # ────────────────────────────────────────────────────────────────────
 # Argument parsing + plugin-tree root resolution
 # ────────────────────────────────────────────────────────────────────
-PLUGIN_ROOT="${1:-${OJ_OUTPUT_DIR:-/Users/brenton/workspace/github.com/openjunto/oj-claude}}"
+# Default to the sibling oj-claude checkout resolved from this script's location
+# (<parent>/oj-claude, sibling to juntogen/); override via $1 or OJ_OUTPUT_DIR.
+_JG_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+PLUGIN_ROOT="${1:-${OJ_OUTPUT_DIR:-$(dirname "${_JG_ROOT}")/oj-claude}}"
 
 if [[ ! -d "${PLUGIN_ROOT}" ]]; then
     echo "ERROR: structural-diff: PLUGIN_ROOT not a directory: ${PLUGIN_ROOT}" >&2
