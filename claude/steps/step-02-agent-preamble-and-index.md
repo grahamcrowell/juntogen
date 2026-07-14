@@ -157,6 +157,8 @@ The 14 domain experts are:
 13. Senior Site Reliability Engineer
 14. Senior Software Engineer
 
+**File-name rule (MANDATORY)**: the File name column MUST be the exact profile basename emitted by step-03 — `senior-<full-role-name>.md`, hyphen-cased from the full role title — never an abbreviation. In particular, Senior Site Reliability Engineer is `senior-site-reliability-engineer.md`, NOT `senior-sre.md`; every File name value must resolve to a real file under `${CLAUDE_PLUGIN_ROOT}/agents/`. (An emitted `senior-sre.md` is a defect: it points at no profile and breaks the router link. Regression fixed 2026-07-13.)
+
 #### Expert Selection Guide (in index)
 Problem type mapping table with 4 columns:
 - Problem Type
