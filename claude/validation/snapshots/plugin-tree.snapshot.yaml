@@ -30,10 +30,12 @@
 #
 # 0.1.0 follow-up refresh (2026-07-13): file-set re-collated to LC_ALL=C byte
 # order (the same collation structural-diff.sh applies at compare time) and
-# caught up with 7 tracked paths absent from the prior capture: the
-# delegate-sandbox / sandbox-cycle / workstream-new skills, bootstrap.sh, the
-# v0.1.0 test plan + regression script, and juntogen/claude/step-01-workstream-new.md
-# (a generator prompt tracked inside the plugin tree — flagged for separate cleanup).
+# caught up with 6 tracked paths absent from the prior capture: the
+# delegate-sandbox / sandbox-cycle / workstream-new skills, bootstrap.sh, and the
+# v0.1.0 test plan + regression script. (A 7th stray path,
+# juntogen/claude/step-01-workstream-new.md - a generator prompt mistakenly
+# committed into the plugin tree - was removed from oj-claude rather than
+# snapshotted.)
 ---
 snapshot_version: "1"
 captured_at: "2026-05-11T19:35:44Z"
@@ -76,7 +78,6 @@ files:
   - "docs/onboarding.md"
   - "docs/test-plans/v0.1.0-test-plan.md"
   - "hooks/hooks.json"
-  - "juntogen/claude/step-01-workstream-new.md"
   - "org-scaffold/.gitignore"
   - "org-scaffold/BACKLOG.md"
   - "org-scaffold/README.md"
