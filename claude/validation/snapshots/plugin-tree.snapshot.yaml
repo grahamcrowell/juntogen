@@ -27,6 +27,15 @@
 # Net: agents/ now holds ONLY the 16 full profiles. Full profiles keep
 # their agents/<name>.md path. subagent_start_matchers UNCHANGED
 # (still general-purpose; native-subagent migration deferred).
+#
+# 0.1.0 follow-up refresh (2026-07-13): file-set re-collated to LC_ALL=C byte
+# order (the same collation structural-diff.sh applies at compare time) and
+# caught up with 6 tracked paths absent from the prior capture: the
+# delegate-sandbox / sandbox-cycle / workstream-new skills, bootstrap.sh, and the
+# v0.1.0 test plan + regression script. (A 7th stray path,
+# juntogen/claude/step-01-workstream-new.md - a generator prompt mistakenly
+# committed into the plugin tree - was removed from oj-claude rather than
+# snapshotted.)
 ---
 snapshot_version: "1"
 captured_at: "2026-05-11T19:35:44Z"
@@ -41,6 +50,12 @@ files:
   - ".githooks/commit-msg"
   - ".github/workflows/plugin-validate.yml"
   - ".gitignore"
+  - "CHANGELOG.md"
+  - "CONDUCTOR.md"
+  - "LICENSE"
+  - "README.md"
+  - "VERSION"
+  - "WHY.md"
   - "agents/senior-business-analyst.md"
   - "agents/senior-data-architect.md"
   - "agents/senior-data-scientist.md"
@@ -59,24 +74,22 @@ files:
   - "agents/senior-test-engineer.md"
   - "bin/lib/contracts.sh"
   - "bin/oj-helper"
-  - "CHANGELOG.md"
-  - "CONDUCTOR.md"
+  - "bootstrap.sh"
   - "docs/onboarding.md"
+  - "docs/test-plans/v0.1.0-test-plan.md"
   - "hooks/hooks.json"
-  - "LICENSE"
   - "org-scaffold/.gitignore"
+  - "org-scaffold/BACKLOG.md"
+  - "org-scaffold/README.md"
   - "org-scaffold/artifacts/adr/.gitkeep"
   - "org-scaffold/artifacts/analysis/.gitkeep"
-  - "org-scaffold/BACKLOG.md"
   - "org-scaffold/commands/health-check.md"
   - "org-scaffold/commands/intake.md"
   - "org-scaffold/llms.txt"
-  - "org-scaffold/README.md"
   - "org-scaffold/reference/org-coordination-guide.md"
   - "org-scaffold/reference/validated-facts-org.md"
   - "org-scaffold/state/.gitkeep"
   - "platform-defaults.yaml"
-  - "README.md"
   - "reference/communication-standards.md"
   - "reference/compact/senior-business-analyst.md"
   - "reference/compact/senior-data-architect.md"
@@ -122,19 +135,21 @@ files:
   - "scripts/tests/plugin-e2e-test.sh"
   - "scripts/tests/plugin-validate-test.sh"
   - "scripts/tests/pre-commit-test.sh"
+  - "scripts/tests/v0.1.0-regression-test.sh"
   - "scripts/validate-plugin.sh"
   - "skills/cycle/SKILL.md"
+  - "skills/delegate-sandbox/SKILL.md"
   - "skills/health-check/SKILL.md"
   - "skills/run-task/SKILL.md"
+  - "skills/sandbox-cycle/SKILL.md"
   - "skills/save-session/SKILL.md"
   - "skills/show-backlog/SKILL.md"
+  - "skills/workstream-new/SKILL.md"
   - "templates/architecture-decision-record.md"
   - "templates/communications-playbook.md"
   - "templates/retrospective.md"
   - "templates/session-state.md"
   - "templates/technical-analysis.md"
-  - "VERSION"
-  - "WHY.md"
 
 # Layer 2: manifest-keys — top-level keys present in plugin.json
 plugin_json_keys:

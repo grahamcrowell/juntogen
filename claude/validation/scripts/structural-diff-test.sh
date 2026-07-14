@@ -58,7 +58,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DIFF="${SCRIPT_DIR}/structural-diff.sh"
-LIVE_TREE="${OJ_OUTPUT_DIR:-/Users/brenton/workspace/github.com/openjunto/oj-claude}"
+# Default to the sibling oj-claude checkout resolved from this script's location
+# (<parent>/oj-claude, sibling to juntogen/); override via OJ_OUTPUT_DIR.
+_JG_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+LIVE_TREE="${OJ_OUTPUT_DIR:-$(dirname "${_JG_ROOT}")/oj-claude}"
 
 if [ -t 1 ]; then
     RED=$'\033[0;31m'; GREEN=$'\033[0;32m'; YELLOW=$'\033[1;33m'; CYAN=$'\033[0;36m'; NC=$'\033[0m'
@@ -241,14 +244,17 @@ scenario_live_tree_positive() {
 }
 
 # ── Scenario 2: conductor-unresolved (Phase 3 reviewer's reproduction) ──
-# Plant the exact mutation from the Phase 3 adversarial review:
-#   replace ${CLAUDE_PLUGIN_ROOT}/agents/index.md with a nonexistent path.
+# Plant a broken CONDUCTOR ref and expect L4 to catch it:
+#   replace ${CLAUDE_PLUGIN_ROOT}/reference/expert-index.md with a nonexistent
+#   path. (v0.1.0 relocated the former agents/index.md to reference/expert-index.md;
+#   the pre-v0.1.0 agents/index.md ref no longer exists in CONDUCTOR, so mutating
+#   it was a no-op that let this negative control silently pass.)
 # Expect exit 1 with referential-integrity-conductor-ref-unresolved.
 scenario_conductor_unresolved() {
     local td
     td=$(clone_live_tree "unresolved")
     overlay_v002_data_files "${td}"
-    sed -i.bak 's|${CLAUDE_PLUGIN_ROOT}/agents/index.md|${CLAUDE_PLUGIN_ROOT}/agents/THIS-FILE-DOES-NOT-EXIST.md|g' \
+    sed -i.bak 's|${CLAUDE_PLUGIN_ROOT}/reference/expert-index.md|${CLAUDE_PLUGIN_ROOT}/reference/THIS-FILE-DOES-NOT-EXIST.md|g' \
         "${td}/CONDUCTOR.md"
     run_diff "${td}"
     assert_pass "2. conductor-unresolved (Phase 3 reviewer's planted bad ref)" "1" \

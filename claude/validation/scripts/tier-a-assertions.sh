@@ -19,9 +19,9 @@
 #     ${OUTPUT_DIR}/scripts/validate-plugin.sh as the gate to coverage drop.
 #
 # USAGE: ./tier-a-assertions.sh [OUTPUT_DIR]
-#        OUTPUT_DIR defaults to /Users/brenton/workspace/github.com/openjunto/
-#                            oj-claude (the canonical hand-cut baseline) when
-#        invoked without an argument and OJ_OUTPUT_DIR is unset.
+#        OUTPUT_DIR defaults to the sibling oj-claude checkout (<parent>/oj-claude,
+#                            resolved from this script's location) when invoked
+#        without an argument and OJ_OUTPUT_DIR is unset.
 #
 # EXIT CODES:
 #   0 - All assertions passed
@@ -58,7 +58,10 @@ info() {
 #   1. positional argument $1 (explicit OUTPUT_DIR)
 #   2. ${OJ_OUTPUT_DIR} env var
 #   3. canonical hand-cut baseline (oj-claude under the openjunto workspace)
-OUTPUT_DIR="${1:-${OJ_OUTPUT_DIR:-/Users/brenton/workspace/github.com/openjunto/oj-claude}}"
+# Default to the sibling oj-claude checkout resolved from this script's location
+# (<parent>/oj-claude, sibling to juntogen/); override via $1 or OJ_OUTPUT_DIR.
+_JG_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+OUTPUT_DIR="${1:-${OJ_OUTPUT_DIR:-$(dirname "${_JG_ROOT}")/oj-claude}}"
 
 if [[ ! -d "${OUTPUT_DIR}" ]]; then
     echo -e "${RED}ERROR${NC} OUTPUT_DIR is not a directory: ${OUTPUT_DIR}"
@@ -72,6 +75,11 @@ OUTPUT_DIR="$(cd "${OUTPUT_DIR}" && pwd)"
 
 # CONDUCTOR.md is the manager-protocol file post-BL-025-i.2; src/CLAUDE.md is retired.
 TARGET_FILE="${OUTPUT_DIR}/CONDUCTOR.md"
+# v0.1.0 CONDUCTOR slim: the execution mechanics (quality-gate tier checklists
+# and handback formats) moved out of the always-injected CONDUCTOR core into the
+# on-demand reference/execution-protocol.md. Assertions 1 and 6 target this file;
+# the delegation Self-Check and Circuit Breaker stayed in CONDUCTOR.md.
+EXEC_PROTO_FILE="${OUTPUT_DIR}/reference/execution-protocol.md"
 
 if [[ ! -f "${TARGET_FILE}" ]]; then
     echo -e "${RED}ERROR${NC} CONDUCTOR.md not found at ${TARGET_FILE}"
@@ -262,11 +270,11 @@ A16_BANNED_REGEX="${A16_REGEX:-__no_s16_term_in_contract__}"
 info "Assertion 1: Quality gate item counts"
 
 # Simple Tier — section-bounded extraction stops at next ###, ##, or ---
-SIMPLE_HEADER_FOUND=$(awk '/^### Simple Tier \(2 items\)/{print 1; exit}' "${TARGET_FILE}")
+SIMPLE_HEADER_FOUND=$(awk '/^### Simple Tier \(2 items\)/{print 1; exit}' "${EXEC_PROTO_FILE}")
 if [[ -z "${SIMPLE_HEADER_FOUND}" ]]; then
     fail "Section header not found: '### Simple Tier (2 items)'"
 else
-    SIMPLE_GATES=$(awk '/^### Simple Tier \(2 items\)/{found=1; next} found && /^(###|##|---)/{exit} found && /^- \[ \]/{count++} END{print count+0}' "${TARGET_FILE}")
+    SIMPLE_GATES=$(awk '/^### Simple Tier \(2 items\)/{found=1; next} found && /^(###|##|---)/{exit} found && /^- \[ \]/{count++} END{print count+0}' "${EXEC_PROTO_FILE}")
     if [[ "${SIMPLE_GATES}" -eq 2 ]]; then
         pass "Simple tier quality gates: ${SIMPLE_GATES} items (expected 2)"
     else
@@ -275,11 +283,11 @@ else
 fi
 
 # Moderate Tier
-MODERATE_HEADER_FOUND=$(awk '/^### Moderate Tier \(6 items\)/{print 1; exit}' "${TARGET_FILE}")
+MODERATE_HEADER_FOUND=$(awk '/^### Moderate Tier \(6 items\)/{print 1; exit}' "${EXEC_PROTO_FILE}")
 if [[ -z "${MODERATE_HEADER_FOUND}" ]]; then
     fail "Section header not found: '### Moderate Tier (6 items)'"
 else
-    MODERATE_GATES=$(awk '/^### Moderate Tier \(6 items\)/{found=1; next} found && /^(###|##|---)/{exit} found && /^- \[ \]/{count++} END{print count+0}' "${TARGET_FILE}")
+    MODERATE_GATES=$(awk '/^### Moderate Tier \(6 items\)/{found=1; next} found && /^(###|##|---)/{exit} found && /^- \[ \]/{count++} END{print count+0}' "${EXEC_PROTO_FILE}")
     if [[ "${MODERATE_GATES}" -eq 6 ]]; then
         pass "Moderate tier quality gates: ${MODERATE_GATES} items (expected 6)"
     else
@@ -288,11 +296,11 @@ else
 fi
 
 # Complex Tier
-COMPLEX_HEADER_FOUND=$(awk '/^### Complex Tier \(9 items\)/{print 1; exit}' "${TARGET_FILE}")
+COMPLEX_HEADER_FOUND=$(awk '/^### Complex Tier \(9 items\)/{print 1; exit}' "${EXEC_PROTO_FILE}")
 if [[ -z "${COMPLEX_HEADER_FOUND}" ]]; then
     fail "Section header not found: '### Complex Tier (9 items)'"
 else
-    COMPLEX_GATES=$(awk '/^### Complex Tier \(9 items\)/{found=1; next} found && /^(###|##|---)/{exit} found && /^- \[ \]/{count++} END{print count+0}' "${TARGET_FILE}")
+    COMPLEX_GATES=$(awk '/^### Complex Tier \(9 items\)/{found=1; next} found && /^(###|##|---)/{exit} found && /^- \[ \]/{count++} END{print count+0}' "${EXEC_PROTO_FILE}")
     if [[ "${COMPLEX_GATES}" -eq 9 ]]; then
         pass "Complex tier quality gates: ${COMPLEX_GATES} items (expected 9)"
     else
@@ -344,7 +352,8 @@ echo ""
 
 # ---------------------------------------------------------------------------
 # ASSERTION 4: Delegation self-check questions
-# Expected: 3 numbered questions in delegation self-check section
+# Expected: 4 numbered questions (v0.1.0 added item 0 — the orchestration-scope
+# carve-out gating the delegation boundary — ahead of the original 3).
 # ---------------------------------------------------------------------------
 info "Assertion 4: Delegation self-check questions"
 
@@ -353,10 +362,10 @@ if [[ -z "${SELFCHECK_HEADER_FOUND}" ]]; then
     fail "Section header not found: '**Self-Check**'"
 else
     SELF_CHECK_QUESTIONS=$(awk '/\*\*Self-Check\*\*/{found=1; next} found && /^(###|##|---)/{exit} found && /^[0-9]\. /{count++} END{print count+0}' "${TARGET_FILE}")
-    if [[ "${SELF_CHECK_QUESTIONS}" -eq 3 ]]; then
-        pass "Delegation self-check: ${SELF_CHECK_QUESTIONS} questions (expected 3)"
+    if [[ "${SELF_CHECK_QUESTIONS}" -eq 4 ]]; then
+        pass "Delegation self-check: ${SELF_CHECK_QUESTIONS} questions (expected 4)"
     else
-        fail "Delegation self-check: ${SELF_CHECK_QUESTIONS} questions (expected 3)"
+        fail "Delegation self-check: ${SELF_CHECK_QUESTIONS} questions (expected 4)"
     fi
 fi
 
@@ -414,7 +423,7 @@ SIMPLE_HANDBACK_FIELDS=$(awk '
         count++
     }
     END { print count+0 }
-' "${TARGET_FILE}")
+' "${EXEC_PROTO_FILE}")
 
 if [[ "${SIMPLE_HANDBACK_FIELDS}" -ge 5 ]]; then
     pass "Simple handback format: ${SIMPLE_HANDBACK_FIELDS} fields (expected >=5)"
@@ -438,7 +447,7 @@ COMPLEX_HANDBACK_FIELDS=$(awk '
         count++
     }
     END { print count+0 }
-' "${TARGET_FILE}")
+' "${EXEC_PROTO_FILE}")
 
 if [[ "${COMPLEX_HANDBACK_FIELDS}" -ge 9 ]]; then
     pass "Moderate/Complex handback format: ${COMPLEX_HANDBACK_FIELDS} fields (expected >=9)"
