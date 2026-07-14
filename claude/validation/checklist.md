@@ -8,8 +8,10 @@ Per-component verification criteria for an OpenJunto system generated from the j
 
 - [ ] Source directory exists at `src/` with correct subdirectories
 - [ ] `src/CLAUDE.md` exists (global manager instructions)
-- [ ] `src/agents/` directory contains exactly 16 full profiles + `_preamble.md` + `index.md`
-- [ ] `src/agents/compact/` directory contains exactly 16 compact profiles
+- [ ] `src/agents/` directory contains exactly 16 full profiles (no `_preamble.md`, no `index.md` — moved to `reference/` in 0.1.0)
+- [ ] `src/reference/expert-preamble.md` exists (moved from `agents/_preamble.md`)
+- [ ] `src/reference/expert-index.md` exists (moved from `agents/index.md`)
+- [ ] `src/reference/compact/` directory contains exactly 16 compact profiles (moved from `agents/compact/` in 0.1.0; filenames drop the `-compact` suffix)
 - [ ] `src/templates/` directory contains exactly 5 templates
 - [ ] `src/commands/` directory contains exactly 3 core commands
 - [ ] `src/reference/` directory contains exactly 8 core reference files
@@ -58,8 +60,9 @@ Per-component verification criteria for an OpenJunto system generated from the j
 
 ### Two-Dimensional Triage Section
 - [ ] `### A. Execution Model` subsection present
-- [ ] Criteria table has exactly 4 rows with checkboxes
-- [ ] Scoring rule: `0-1 = Simple (inline), 2-3 = Moderate (Task tool), 4 = Complex (Team/Swarm)`
+- [ ] Criteria table has exactly 4 rows with checkboxes (criteria count UNCHANGED in 0.1.0)
+- [ ] Trivial tier-0 present (0.1.0): mechanical/no-judgment work the manager may handle directly without stakeholder rotation, sitting below Simple in the tier ladder. Note this is an added TIER, not an added criterion — the criteria count stays 4.
+- [ ] Scoring rule maps the four-criterion score to tiers (Simple/Moderate/Complex); confirm the Trivial tier-0 carve-out is described alongside it rather than as a fifth criterion
 - [ ] Mandatory escalation statement present verbatim
 - [ ] `### B. Stakeholder Identification` subsection present
 - [ ] Mandatory pair: `Product + Tech` (exact wording)
@@ -108,9 +111,12 @@ Per-component verification criteria for an OpenJunto system generated from the j
 ### Reference and Operations Section
 - [ ] `### issue tracker Bootstrap` subsection present
 - [ ] `### Tier-Aware Context Loading` table with 3 rows (Simple, Moderate, Complex)
-- [ ] `### Reference Files` table with exactly 8 files listed
+- [ ] `### Reference Files` table lists the core reference files (see Reference Files roster below)
+- [ ] `reference/execution-protocol.md` referenced as an on-demand manager-protocol expansion (0.1.0: CONDUCTOR CORE stays slim and defers detailed protocol to this file)
 - [ ] Organization-specific reference blockquote present
 - [ ] `### Templates` table with exactly 5 templates listed
+
+> **0.1.0 note:** The CONDUCTOR CORE is intentionally slim. Detailed manager-protocol steps that used to live inline are expanded on demand from `reference/execution-protocol.md`. Verify the CORE points at it rather than duplicating the full protocol.
 
 ### Definition of Done Section
 - [ ] `### Simple Tier` with exactly 3 items
@@ -125,8 +131,8 @@ Per-component verification criteria for an OpenJunto system generated from the j
 
 Count verification:
 - [ ] Exactly 16 full profiles exist in `src/agents/`
-- [ ] `_preamble.md` exists
-- [ ] `index.md` exists
+- [ ] `reference/expert-preamble.md` exists (0.1.0: moved from `agents/_preamble.md`)
+- [ ] `reference/expert-index.md` exists (0.1.0: moved from `agents/index.md`)
 
 ### Profile Roster (all present with exact filenames)
 - [ ] `senior-distinguished-engineer.md`
@@ -183,8 +189,8 @@ For each profile checked:
 ## Compact Profiles
 
 Count verification:
-- [ ] Exactly 16 compact profiles exist in `src/agents/compact/`
-- [ ] Filenames match full profile filenames exactly
+- [ ] Exactly 16 compact profiles exist in `src/reference/compact/` (0.1.0: moved from `agents/compact/`)
+- [ ] Filenames match full profile filenames exactly (`reference/compact/<name>.md` mirrors `agents/<name>.md`; no `-compact` suffix)
 
 ### Per-Compact-Profile Structure (check 3-5 as spot check)
 
@@ -195,12 +201,12 @@ For each compact profile checked:
 - [ ] Red flags (bullet list, 4-6 items) with ACTIVE language preserved
 - [ ] Adversarial behaviors (2-3 bullets) from full profile "When Supporting"
 - [ ] Handback format (Simple tier compressed format shown)
-- [ ] Reference back to full profile with exact path
+- [ ] Reference back to full profile with exact path (`agents/<name>.md`)
 - [ ] Total size <2KB (approximately 30 lines)
 
 ---
 
-## Preamble (_preamble.md)
+## Preamble (reference/expert-preamble.md)
 
 - [ ] AI Agent Context section with 5 key implications
 - [ ] Organizational Standards Reference section pointing to `organizational-standards.md`
@@ -211,7 +217,7 @@ For each compact profile checked:
 
 ---
 
-## Index (index.md)
+## Index (reference/expert-index.md)
 
 - [ ] Quick Reference section with two tables (Mandatory Stakeholders + Domain Experts)
 - [ ] Mandatory Stakeholders table has 2 rows (Distinguished Engineer, Product Manager) with Tie-Breaker Authority column
@@ -400,7 +406,7 @@ Count verification:
 - [ ] Reads first line of transcript (spawn prompt)
 - [ ] Extracts profile name via HTML marker (`<!-- oj-expert: PROFILE -->`) or path pattern
 - [ ] Path traversal guard (rejects `..` and `/` in profile names)
-- [ ] Loads `_preamble.md` + full profile (or compact fallback)
+- [ ] Loads the expert preamble (`reference/expert-preamble.md`) + full profile (`agents/<name>.md`), or the compact fallback (`reference/compact/<name>.md`)
 - [ ] Outputs hook response JSON with `additionalContext` field
 - [ ] Graceful exit 0 on failures (jq missing, transcript unavailable, profile not found)
 
@@ -469,7 +475,7 @@ Count verification:
 - [ ] AGENT_SRCS uses wildcard: `$(wildcard $(SRC_DIR)/agents/*.md)`
 - [ ] COMPACT_AGENT_SRCS uses wildcard
 - [ ] TEMPLATE_SRCS, COMMAND_SRCS, REFERENCE_SRCS use wildcards
-- [ ] No hardcoded file lists (except for special cases like CLAUDE.md, _preamble.md, index.md)
+- [ ] No hardcoded file lists (except for special cases like CLAUDE.md, and the moved-to-reference expert-preamble.md / expert-index.md)
 
 ### Settings Merge
 - [ ] `settings` target computes source hash (md5)
@@ -497,8 +503,8 @@ Count verification:
 ## Cross-References
 
 ### Profile → Index
-- [ ] All 16 full profile filenames in `agents/` match entries in `index.md` Domain Experts table
-- [ ] All 16 compact profile filenames in `agents/compact/` match full profile names
+- [ ] All 16 full profile filenames in `agents/` match entries in `reference/expert-index.md` Domain Experts table
+- [ ] All 16 compact profile filenames in `reference/compact/` match full profile names in `agents/`
 
 ### CLAUDE.md → Reference Files
 - [ ] All 8 reference files listed in CLAUDE.md Reference Files table exist in `src/reference/`

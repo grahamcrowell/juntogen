@@ -45,7 +45,17 @@ fi
 # shellcheck source=lib/contracts.sh
 source "${_OJ_SCRIPT_DIR}/lib/contracts.sh"
 
-AGENTS_DIR="${CLAUDE_PLUGIN_ROOT:-$HOME/.claude}/agents"
+# Base path for the plugin tree. inject-profile resolves three distinct
+# locations under this root:
+#   - shared preamble:  ${PLUGIN_BASE}/reference/expert-preamble.md
+#   - full profile:     ${PLUGIN_BASE}/agents/<name>.md
+#   - compact fallback: ${PLUGIN_BASE}/reference/compact/<name>.md
+# NOTE: the full profiles are the ONLY files under agents/. The preamble,
+# index, and compact profiles were relocated under reference/. AGENTS_DIR
+# still points at agents/ (full profiles); the preamble and compact paths
+# are derived from PLUGIN_BASE, NOT from AGENTS_DIR.
+PLUGIN_BASE="${CLAUDE_PLUGIN_ROOT:-$HOME/.claude}"
+AGENTS_DIR="${PLUGIN_BASE}/agents"
 
 debug() { [[ "${OJ_HOOK_DEBUG:-${JUNTO_HOOK_DEBUG:-0}}" == "1" ]] && echo "[oj-helper] $*" >&2 || true; }
 die()   { echo "ERROR: $*" >&2; exit 1; }
@@ -99,11 +109,13 @@ Implement these subcommands (in order). The list below enumerates ALL 12 subcomm
    - **HTML marker**: `<!-- oj-expert: PROFILE_NAME -->` in spawn prompt (bash regex: `\<\!--\ oj-expert:\ ([a-z][a-z0-9-]+)\ --\>`). Also accept the legacy form `<!-- junto-expert: PROFILE_NAME -->` for one release as a backward-compat alias.
    - **Path pattern**: `~/.claude/agents/PROFILE_NAME.md` reference in spawn prompt (bash regex: `/\.claude/agents/([a-z][a-z0-9-]+)\.md`)
 8. **Path traversal guard**: Reject profile names containing `..` or `/`
-9. **Load profile files**:
-   - Read `~/.claude/agents/_preamble.md`
-   - Read `~/.claude/agents/{PROFILE_NAME}.md` (full profile)
-   - If full profile not found, fallback to `~/.claude/agents/compact/{PROFILE_NAME}.md`
-10. **Build context string**: `preamble + "\n\n---\n\n" + profile_content`
+9. **Load profile files** (paths derived from `PLUGIN_BASE`; the preamble and compact profiles were relocated out of `agents/` — see the header note):
+   - Read the shared preamble from `${PLUGIN_BASE}/reference/expert-preamble.md` (NOT `agents/_preamble.md`).
+   - Read the full profile from `${AGENTS_DIR}/{PROFILE_NAME}.md` (i.e. `${PLUGIN_BASE}/agents/{PROFILE_NAME}.md`).
+   - If the full profile is not found, fall back to the compact profile at `${PLUGIN_BASE}/reference/compact/{PROFILE_NAME}.md`. **BUG FIX**: earlier drafts read a nested `${AGENTS_DIR}/compact/{PROFILE_NAME}.md` (i.e. `agents/compact/{PROFILE_NAME}.md`) — that path never exists (compact profiles live under `reference/compact/`, not under `agents/`), so the fallback silently failed and no profile was injected. The compact fallback MUST read `${PLUGIN_BASE}/reference/compact/{PROFILE_NAME}.md`.
+10. **Strip YAML frontmatter, then build context string**:
+   - The full profile emitted by step-03 begins with a two-field YAML frontmatter block (`---` … `name:` … `description:` … `---`). Strip this leading frontmatter block from `profile_content` BEFORE injection — the frontmatter is registration metadata, not context the sub-agent should see. Remove only a frontmatter block that starts on line 1: if the first non-empty line is `---`, drop everything through the matching closing `---` line (and any immediately following blank line). If the file does not start with `---` (e.g. a compact profile, which carries no frontmatter), inject it unchanged. A robust awk/sed one-liner is acceptable; do NOT strip a `---` that appears later in the body (horizontal rules inside the profile must survive).
+   - Build the context string from the stripped content: `preamble + "\n\n---\n\n" + profile_content_without_frontmatter`.
 11. **Output hook response JSON**:
 ```json
 {
@@ -124,9 +136,10 @@ Implement these subcommands (in order). The list below enumerates ALL 12 subcomm
 - "spawn prompt empty or unparseable for agent ID"
 - "identified profile 'NAME' via HTML marker"
 - "identified profile 'NAME' via path pattern"
-- "loaded full profile: PATH"
-- "loaded compact profile (full not found): PATH"
-- "no profile found for 'NAME' (checked full and compact)"
+- "loaded full profile: PATH" (from `${PLUGIN_BASE}/agents/NAME.md`)
+- "loaded compact profile (full not found): PATH" (from `${PLUGIN_BASE}/reference/compact/NAME.md`)
+- "no profile found for 'NAME' (checked full agents/ and reference/compact/)"
+- "stripped YAML frontmatter from full profile 'NAME'"
 - "injecting profile 'NAME' (~NNN bytes)"
 
 #### 2. conductor-inject — SessionStart Hook
@@ -447,6 +460,8 @@ After generation, verify the script:
 6. **Argument parsing**: Each subcommand correctly parses flags with `while [[ $# -gt 0 ]]` loop
 7. **Error handling**: Calls `die()` on missing required flags or invalid input
 8. **Graceful degradation**: inject-profile and conductor-inject exit 0 (with valid JSON envelope where applicable) when jq missing, transcript unavailable, profile not found, or CONDUCTOR.md missing
+8a. **inject-profile relocated paths (Item 5)**: preamble read from `${PLUGIN_BASE}/reference/expert-preamble.md` (NOT `agents/_preamble.md`); full profile from `${PLUGIN_BASE}/agents/<name>.md`; compact fallback from `${PLUGIN_BASE}/reference/compact/<name>.md` (NOT the nonexistent `agents/compact/<name>.md`). Verify with `grep -F 'reference/expert-preamble.md' bin/oj-helper` → ≥1 hit and `grep -F 'reference/compact/' bin/oj-helper` → ≥1 hit; and `grep -F 'agents/compact/' bin/oj-helper` → 0 hits (the latent bug is gone).
+8b. **Frontmatter stripping (Item 4)**: inject-profile strips the leading two-field YAML frontmatter block from the full profile before building `additionalContext` (frontmatter starting on line 1 only; body horizontal rules survive). Runtime: injecting a full profile does NOT leak a `name:`/`description:` frontmatter block into `additionalContext`.
 9. **JSON output**: issue-tracker-check, issue-tracker-list, conductor-inject output valid JSON
 10. **Debug output**: debug() calls use descriptive messages, write to stderr
 11. **Dispatcher**: Complete case statement listing ALL 12 subcommands + the `help` branch. Every `command` field in the static-emitted `hooks/hooks.json` (`conductor-inject`, `migrate-legacy`, `inject-profile`) MUST have a corresponding case-branch in the dispatcher. A regression-class check: for every `oj-helper <name>` invocation in `hooks/hooks.json`, `bin/oj-helper` MUST contain both a case-branch `<name>)` AND a function `cmd_<name_underscored>(`.
@@ -456,6 +471,8 @@ After generation, verify the script:
 ## Dependencies
 
 - **Step 00**: `platform-snapshot.yaml` must be available (for SubagentStart hook matcher used in inject-profile agent type filter)
+- **Step 02** (preamble/index) must be complete — inject-profile reads the preamble from `reference/expert-preamble.md`
+- **Step 03** (agent profiles) must be complete — inject-profile reads full profiles from `agents/<name>.md` (whose two-field frontmatter it strips) and compact fallbacks from `reference/compact/<name>.md`
 - **Step 04** (reference files) must be complete — inject-profile references profile paths
 - **Step 05** (templates) must be complete — feedback file format matches template structure
 - **Step 06** (commands) must be complete — commands invoke oj-helper subcommands

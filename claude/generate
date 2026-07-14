@@ -260,8 +260,8 @@ verify_step_01() {
 verify_step_02() {
     local dir="$1"
     local ok=0
-    check_file "${dir}/agents/_preamble.md" || ok=1
-    check_file "${dir}/agents/index.md" || ok=1
+    check_file "${dir}/reference/expert-preamble.md" || ok=1
+    check_file "${dir}/reference/expert-index.md" || ok=1
     return $ok
 }
 
@@ -270,19 +270,19 @@ verify_step_03() {
     local ok=0
     local full_count compact_count
 
-    # 16 full profiles in agents/ (excluding _preamble.md, index.md, *-compact.md)
+    # 16 full profiles in agents/ (agents/ holds ONLY full profiles as of 0.1.0;
+    # preamble, index, and compact profiles moved to reference/)
     full_count=$(find "${dir}/agents" -maxdepth 1 -name '*.md' \
-        ! -name '_preamble.md' ! -name 'index.md' ! -name '*-compact.md' \
         -type f 2>/dev/null | wc -l | tr -d ' ')
     if [ "${full_count}" -lt 16 ]; then
         log_error "Expected 16 full profiles in agents/, found ${full_count}"
         ok=1
     fi
 
-    # 16 compact profiles in agents/*-compact.md (flat layout per BL-025-m.1)
-    compact_count=$(find "${dir}/agents" -maxdepth 1 -name '*-compact.md' -type f 2>/dev/null | wc -l | tr -d ' ')
+    # 16 compact profiles in reference/compact/*.md (relocated out of agents/ in 0.1.0)
+    compact_count=$(find "${dir}/reference/compact" -maxdepth 1 -name '*.md' -type f 2>/dev/null | wc -l | tr -d ' ')
     if [ "${compact_count}" -lt 16 ]; then
-        log_error "Expected 16 compact profiles (agents/*-compact.md), found ${compact_count}"
+        log_error "Expected 16 compact profiles (reference/compact/*.md), found ${compact_count}"
         ok=1
     fi
 
@@ -302,6 +302,7 @@ verify_step_04() {
         "file-patterns.md" \
         "project-scaffolding.md" \
         "communication-standards.md" \
+        "execution-protocol.md" \
     ; do
         check_file "${dir}/reference/${f}" || ok=1
     done

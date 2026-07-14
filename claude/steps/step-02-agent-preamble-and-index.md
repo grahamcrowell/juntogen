@@ -23,19 +23,19 @@ Read these spec files before generating:
 
 Generate the following artifacts:
 
-### 1. Agent Preamble (`agents/_preamble.md`)
+### 1. Agent Preamble (`reference/expert-preamble.md`)
 
 Generate the shared context file loaded before every full profile.
 
-**File location**: `agents/_preamble.md` (at plugin root, plugin-tree-direct layout)
+**File location**: `reference/expert-preamble.md` (relocated out of `agents/` — `agents/` holds only full profile definitions; this shared-context file is not an agent definition, so it lives under `reference/`). The former path was `agents/_preamble.md`.
 
 **Size**: ~2-3KB
 
-### 2. Agent Index (`agents/index.md`)
+### 2. Agent Index (`reference/expert-index.md`)
 
 Generate the central reference file containing the expert roster, selection guide, and profile structure documentation.
 
-**File location**: `agents/index.md` (at plugin root, plugin-tree-direct layout)
+**File location**: `reference/expert-index.md` (relocated out of `agents/` — it is a reference/index document, not an agent definition). The former path was `agents/index.md`.
 
 **Size**: ~4-5KB
 
@@ -48,20 +48,23 @@ Generate the central reference file containing the expert roster, selection guid
 #### Brand Identity (in preamble and index)
 Use **"OpenJunto"** as the product/system name in all user-facing prose (e.g., "the OpenJunto coordination system", "OpenJunto Expert Agent Coordination System"). Do NOT emit bare "Junto" as a product name (preserved only in historical references to Franklin's Junto). Technical identifiers use the lowercase `oj-` prefix (`oj-helper`, `oj-expert` HTML marker, `OJ_DEVMODE`, `{OJ_SOURCE}`) and MUST be preserved verbatim. This distinction exists because the installed binary, hook markers, and env var names are part of the tool contract and are tracked separately from the human-readable product name. The generated helper accepts the legacy `junto-expert` HTML marker, `JUNTO_DEVMODE`, `JUNTO_HOOK_DEBUG`, and `{JUNTO_SOURCE}` placeholder as backward-compat fallbacks for one release.
 
-#### Plugin-Internal Reference Form (MANDATORY for agents/index.md)
+#### Plugin-Internal Reference Form (MANDATORY for reference/expert-index.md)
 
 The source file `{OJ_SOURCE}/agents/index.md` uses `~/.claude/<path>` literals to reference other plugin-internal files (e.g., `` `~/.claude/reference/stakeholder-guide.md` ``). Those paths are correct for the manager-side authoring install, but they are WRONG for plugin-installed adopters — `~/.claude/` resolves to the adopter's HOME, not the plugin tree.
 
-**During emission**, rewrite every `~/.claude/<path>` literal in the generated `agents/index.md` to `${CLAUDE_PLUGIN_ROOT}/<path>`. This is a transform-not-copy operation: do NOT preserve the source's `~/.claude/` form. The `${CLAUDE_PLUGIN_ROOT}` token is resolved by the Claude Code plugin host at session load and is the only adopter-portable form.
+**During emission**, rewrite every `~/.claude/<path>` literal in the generated `reference/expert-index.md` to `${CLAUDE_PLUGIN_ROOT}/<path>`. This is a transform-not-copy operation: do NOT preserve the source's `~/.claude/` form. The `${CLAUDE_PLUGIN_ROOT}` token is resolved by the Claude Code plugin host at session load and is the only adopter-portable form.
+
+Additionally, repoint the relocated files: the shared preamble is `${CLAUDE_PLUGIN_ROOT}/reference/expert-preamble.md` (NOT `agents/_preamble.md`) and the compact profiles are `${CLAUDE_PLUGIN_ROOT}/reference/compact/<name>.md` (NOT `agents/*-compact.md` and NOT a nested `agents/compact/`). Full profiles remain `${CLAUDE_PLUGIN_ROOT}/agents/<name>.md`.
 
 Correct emitted forms (rewrite `~/.claude/` source paths to these):
 
 - `` `${CLAUDE_PLUGIN_ROOT}/reference/stakeholder-guide.md` ``
 - `` `${CLAUDE_PLUGIN_ROOT}/reference/workflow-stages.md` ``
-- `` `${CLAUDE_PLUGIN_ROOT}/agents/_preamble.md` ``
-- `` `${CLAUDE_PLUGIN_ROOT}/agents/*-compact.md` ``
+- `` `${CLAUDE_PLUGIN_ROOT}/reference/expert-preamble.md` ``
+- `` `${CLAUDE_PLUGIN_ROOT}/reference/compact/<name>.md` ``
+- `` `${CLAUDE_PLUGIN_ROOT}/agents/<name>.md` `` (full profiles only)
 
-This rule mirrors the canonical contract documented in step-01 (Plugin-Internal Reference Format). Tier A Assertion 19 enforces a zero-`~/.claude/`-literal invariant across the scoped plugin tree (CONDUCTOR.md, agents/*.md, reference/*.md, docs/**/*.md, skills/*/SKILL.md); failure to apply the transform causes the assertion to FAIL with FILE:LINE diagnostics.
+This rule mirrors the canonical contract documented in step-01 (Plugin-Internal Reference Format). Tier A Assertion 19 enforces a zero-`~/.claude/`-literal invariant across the scoped plugin tree (CONDUCTOR.md, agents/*.md, reference/**/*.md — which now includes reference/expert-preamble.md, reference/expert-index.md, and reference/compact/*.md, docs/**/*.md, skills/*/SKILL.md); failure to apply the transform causes the assertion to FAIL with FILE:LINE diagnostics.
 
 #### PERSPECTIVE Block Format (in preamble)
 Must appear verbatim:
@@ -119,7 +122,7 @@ Five major sections:
 2. **Organizational Standards Reference** — Points to organizational-standards.md (if present), lists 2 categories (Core Technical Principles, Fellow-Level Leadership Behaviors)
 3. **Inline Perspective Context** — Explains Simple tier use case, includes PERSPECTIVE block format
 4. **Standard Profile Structure** — Lists all 16 sections
-5. **Handback Protocol Reference** — Points to CLAUDE.md for formats
+5. **Handback Protocol Reference** — Points to `${CLAUDE_PLUGIN_ROOT}/reference/execution-protocol.md` for the handback formats (the slim CONDUCTOR no longer carries the handback bodies; they render into the execution-protocol reference file in step-04)
 
 #### Index Organization
 Seven major sections:
@@ -128,7 +131,7 @@ Seven major sections:
 3. **Expert Selection Guide** — Problem type mapping table
 4. **Stakeholder Engagement by Execution Model** — Three-tier table
 5. **Profile Structure** — Lists all 16 sections
-6. **Compact Profiles** — When to use, structure, what's omitted
+6. **Compact Profiles** — When to use, structure, what's omitted, and their location (`${CLAUDE_PLUGIN_ROOT}/reference/compact/<name>.md`)
 7. **Maintenance** — When and how to update profiles
 
 #### Domain Experts Table (in index)
@@ -153,6 +156,8 @@ The 14 domain experts are:
 12. Senior Test Engineer
 13. Senior Site Reliability Engineer
 14. Senior Software Engineer
+
+**File-name rule (MANDATORY)**: the File name column MUST be the exact profile basename emitted by step-03 — `senior-<full-role-name>.md`, hyphen-cased from the full role title — never an abbreviation. In particular, Senior Site Reliability Engineer is `senior-site-reliability-engineer.md`, NOT `senior-sre.md`; every File name value must resolve to a real file under `${CLAUDE_PLUGIN_ROOT}/agents/`. (An emitted `senior-sre.md` is a defect: it points at no profile and breaks the router link. Regression fixed 2026-07-13.)
 
 #### Expert Selection Guide (in index)
 Problem type mapping table with 4 columns:
@@ -210,8 +215,9 @@ Deadlocks need deterministic resolution:
 After generation, verify:
 
 ### File Existence
-- [ ] `agents/_preamble.md` exists at plugin root
-- [ ] `agents/index.md` exists at plugin root
+- [ ] `reference/expert-preamble.md` exists (relocated from `agents/_preamble.md`)
+- [ ] `reference/expert-index.md` exists (relocated from `agents/index.md`)
+- [ ] NO `agents/_preamble.md` and NO `agents/index.md` are emitted (those paths are retired)
 
 ### Preamble Structure
 - [ ] Contains 5 major sections
@@ -219,7 +225,7 @@ After generation, verify:
 - [ ] PERSPECTIVE block format present verbatim
 - [ ] 16-section profile template listed in order
 - [ ] Points to organizational-standards.md (graceful reference)
-- [ ] Points to CLAUDE.md for handback protocol
+- [ ] Points to `${CLAUDE_PLUGIN_ROOT}/reference/execution-protocol.md` for the handback protocol
 
 ### Index Structure
 - [ ] Contains 7 major sections
@@ -240,9 +246,10 @@ After generation, verify:
 
 ### Cross-References
 - [ ] Preamble references organizational-standards.md
-- [ ] Preamble references CLAUDE.md
+- [ ] Preamble references `${CLAUDE_PLUGIN_ROOT}/reference/execution-protocol.md` (handback protocol)
 - [ ] Index references stakeholder-guide.md
-- [ ] Index references compact profiles via flat `${CLAUDE_PLUGIN_ROOT}/agents/*-compact.md` suffix (NO nested `agents/compact/` subdirectory; the flat layout is the post-BL-025-i.1 contract)
+- [ ] Index references compact profiles via `${CLAUDE_PLUGIN_ROOT}/reference/compact/<name>.md` (NO `agents/*-compact.md`, NO nested `agents/compact/` subdirectory)
+- [ ] Index references full profiles via `${CLAUDE_PLUGIN_ROOT}/agents/<name>.md`
 - [ ] All plugin-internal cross-references in index use `${CLAUDE_PLUGIN_ROOT}/...` form, NOT `~/.claude/...` (Tier A Assertion 19 invariant)
 
 ---
@@ -256,7 +263,7 @@ After generation, verify:
 ## Output
 
 After completing this step, you will have:
-- Agent preamble (`agents/_preamble.md`, ~2-3KB)
-- Agent index (`agents/index.md`, ~4-5KB)
+- Agent preamble (`reference/expert-preamble.md`, ~2-3KB)
+- Agent index (`reference/expert-index.md`, ~4-5KB)
 
 These outputs are required inputs for step 03 (agent profile generation).
