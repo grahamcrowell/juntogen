@@ -244,14 +244,17 @@ scenario_live_tree_positive() {
 }
 
 # ── Scenario 2: conductor-unresolved (Phase 3 reviewer's reproduction) ──
-# Plant the exact mutation from the Phase 3 adversarial review:
-#   replace ${CLAUDE_PLUGIN_ROOT}/agents/index.md with a nonexistent path.
+# Plant a broken CONDUCTOR ref and expect L4 to catch it:
+#   replace ${CLAUDE_PLUGIN_ROOT}/reference/expert-index.md with a nonexistent
+#   path. (v0.1.0 relocated the former agents/index.md to reference/expert-index.md;
+#   the pre-v0.1.0 agents/index.md ref no longer exists in CONDUCTOR, so mutating
+#   it was a no-op that let this negative control silently pass.)
 # Expect exit 1 with referential-integrity-conductor-ref-unresolved.
 scenario_conductor_unresolved() {
     local td
     td=$(clone_live_tree "unresolved")
     overlay_v002_data_files "${td}"
-    sed -i.bak 's|${CLAUDE_PLUGIN_ROOT}/agents/index.md|${CLAUDE_PLUGIN_ROOT}/agents/THIS-FILE-DOES-NOT-EXIST.md|g' \
+    sed -i.bak 's|${CLAUDE_PLUGIN_ROOT}/reference/expert-index.md|${CLAUDE_PLUGIN_ROOT}/reference/THIS-FILE-DOES-NOT-EXIST.md|g' \
         "${td}/CONDUCTOR.md"
     run_diff "${td}"
     assert_pass "2. conductor-unresolved (Phase 3 reviewer's planted bad ref)" "1" \
