@@ -43,7 +43,7 @@ Generate three user-facing documentation files:
      Then "start a new Claude Code session (restart, or `/clear`) to load the plugin" — use this POST-PR#3 wording. Do NOT emit `/reload-plugins` as the post-install action (the `SessionStart` hook does not re-fire on `/reload-plugins`, so the banner would not appear and the manager protocol would not be re-injected).
    - **Local-iteration variant** (for working on the plugin without installing):
      ```bash
-     git clone https://github.com/openjunto/oj-claude.git
+     git clone https://github.com/grahamcrowell/oj-claude.git
      claude --plugin-dir ./oj-claude
      ```
 

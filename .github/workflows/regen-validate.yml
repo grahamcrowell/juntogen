@@ -3,7 +3,7 @@
 #
 # DESIGN: This workflow does NOT regenerate. There is no ANTHROPIC_API_KEY
 # and no `claude` invocation that calls the model. The workflow checks out
-# juntogen + sibling-checks-out openjunto/oj-claude (default-branch HEAD),
+# juntogen + sibling-checks-out grahamcrowell/oj-claude (default-branch HEAD),
 # then runs juntogen's three validation entry-points against the oj-claude
 # tree as OUTPUT_DIR. This catches drift between the genome's expectations
 # (snapshot, byte-diff baseline, tier-a invariants) and what currently
@@ -30,7 +30,7 @@
 # "Guard sibling oj-claude checkout" step fails loud BEFORE the validators
 # run — converting a silent green-by-coincidence into a hard signal.
 #
-# CHECKOUT-GUARD RATIONALE: actions/checkout for openjunto/oj-claude does
+# CHECKOUT-GUARD RATIONALE: actions/checkout for grahamcrowell/oj-claude does
 # NOT carry continue-on-error. With the explicit guard step asserting the
 # checkout is a real plugin tree, letting checkout fail loudly with its
 # native error message is clearer than swallowing the failure and relying
@@ -56,10 +56,10 @@ jobs:
         with:
           path: juntogen
 
-      - name: Sibling-checkout openjunto/oj-claude (default-branch HEAD)
+      - name: Sibling-checkout grahamcrowell/oj-claude (default-branch HEAD)
         uses: actions/checkout@v4
         with:
-          repository: openjunto/oj-claude
+          repository: grahamcrowell/oj-claude
           path: oj-claude
 
       - name: Guard sibling oj-claude checkout
@@ -71,7 +71,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ ! -f "${GITHUB_WORKSPACE}/oj-claude/.claude-plugin/plugin.json" ]; then
-            echo "ERROR: sibling checkout of openjunto/oj-claude did not yield a plugin tree" >&2
+            echo "ERROR: sibling checkout of grahamcrowell/oj-claude did not yield a plugin tree" >&2
             echo "       (missing ${GITHUB_WORKSPACE}/oj-claude/.claude-plugin/plugin.json)" >&2
             echo "       Check the sibling-checkout step output above for actions/checkout errors." >&2
             exit 1

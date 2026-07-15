@@ -4,7 +4,7 @@
   "description": "Mandatory adversarial review for Claude Code — 16 expert sub-agents that push back",
   "author": {"name": "OpenJunto authors"},
   "license": "MIT",
-  "repository": "https://github.com/openjunto/oj-claude",
-  "homepage": "https://github.com/openjunto/oj-claude",
+  "repository": "https://github.com/grahamcrowell/oj-claude",
+  "homepage": "https://github.com/grahamcrowell/oj-claude",
   "keywords": ["openjunto", "coordination", "multi-agent", "deliberation"]
 }
