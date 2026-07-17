@@ -144,19 +144,25 @@ platform:
       tier: "routine"
       context_window: 200000
       max_output_tokens: 64000
-      cost_ratio: 1.0   # baseline; relative input token cost
+      cost_ratio: 0.2   # relative input token cost; opus[1m] = 1.0 baseline
     - id: "sonnet"
-      api_id: "claude-sonnet-4-6"
+      api_id: "claude-sonnet-5"
+      tier: "routine"
+      context_window: 1000000
+      max_output_tokens: 128000
+      cost_ratio: 0.6
+    - id: "opus[1m]"
+      api_id: "claude-opus-4-8"
       tier: "implementation"
       context_window: 1000000
-      max_output_tokens: 64000
-      cost_ratio: 3.0
-    - id: "opus"
-      api_id: "claude-opus-4-6"
+      max_output_tokens: 128000
+      cost_ratio: 1.0   # baseline
+    - id: "fable"
+      api_id: "claude-fable-5"
       tier: "reasoning"
       context_window: 1000000   # confirmed: system prompt states "1M context"
       max_output_tokens: 128000
-      cost_ratio: 5.0
+      cost_ratio: 2.0
   hooks:
     - point: "SubagentStart"
       capabilities: ["modify_prompt", "add_context"]
@@ -176,7 +182,7 @@ platform:
 - **`tools[].available`**: `true` for unconditionally available tools; `conditional` for tools available only in specific contexts (e.g., `AskUserQuestion` is not available in team sub-agent sessions).
 - **`models[].api_id`**: The actual string used in Claude Code's `model` parameter and `settings.json`. Distinct from the symbolic `id` used in derivation chains and human-readable references. Downstream prompts (step-09) use `api_id` when generating `settings.json`.
 - **`models[].max_output_tokens`**: Maximum output tokens per response for this model. Used by derivation chains that need to account for output length constraints (e.g., compact profile sizing, reference file budget). These are [EXTERNAL] platform facts — update when model limits change.
-- **`models[].cost_ratio`**: Relative input token cost with haiku as 1.0 baseline. Used by Chain 7 (model selection) and Chain 6 (stakeholder escalation). Not an absolute price — update when relative costs shift significantly.
+- **`models[].cost_ratio`**: Relative input token cost with opus[1m] (the implementation tier) as 1.0 baseline. Used by Chain 7 (model selection) and Chain 6 (stakeholder escalation). Not an absolute price — update when relative costs shift significantly.
 - **`_meta.introspection_coverage`**: Present when `mode=declaration` and the declaration was produced by the introspection sub-step. Per-category markers (`full`, `partial`, `none`) documenting which fields were observed from the live session vs. filled from defaults. Enables downstream consumers to assess confidence in platform facts.
 - **`constraints.max_concurrent_agents_type`**: `configured` means the value is a tunable recommendation, not a hard platform ceiling. Derivation chains that use this value should apply it differently depending on type.
 - **`hooks[].matchers`**: Agent types that trigger this hook. SubagentStart fires for `general-purpose` agents; SessionStart has no matcher (fires for all sessions).
@@ -219,8 +225,8 @@ When running in a live Claude Code session without an existing `platform-declara
 **What introspection enumerates:**
 
 1. **Tools (full)**: Parse the system prompt tool definitions. Each tool's name and complete parameter list (from JSONSchema `required` and `properties` fields) are directly available. Deferred tools (listed in `<available-deferred-tools>` blocks) are enumerated by name, then their full schemas are fetched via `ToolSearch` before emitting.
-2. **Own model identity (full)**: The system prompt contains the running model's name, model ID, and context window (e.g., "You are powered by the model named Opus 4.6 (with 1M context). The exact model ID is claude-opus-4-6[1m].").
-3. **Model roster (partial)**: Other model family IDs are listed in the system prompt (e.g., "Sonnet 4.6: 'claude-sonnet-4-6'"). However, their context windows, output limits, and cost ratios are NOT stated — these fields fall back to `platform-defaults.yaml`.
+2. **Own model identity (full)**: The system prompt contains the running model's name, model ID, and context window (e.g., "You are powered by the model named Opus 4.8. The exact model ID is claude-opus-4-8.").
+3. **Model roster (partial)**: Other model family IDs are listed in the system prompt (e.g., "Sonnet 5: 'claude-sonnet-5'"). However, their context windows, output limits, and cost ratios are NOT stated — these fields fall back to `platform-defaults.yaml`.
 
 **What introspection CANNOT observe (filled from defaults):**
 

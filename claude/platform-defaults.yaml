@@ -13,13 +13,15 @@
 #
 # MODEL IDs: api_id strings are Anthropic's canonical identifiers. Haiku includes a
 # date suffix (`claude-haiku-4-5-20251001`) per Anthropic's current naming;
-# Sonnet/Opus do not. This reflects upstream convention, not internal inconsistency.
+# Sonnet/Opus/Fable do not. The `opus[1m]` symbolic id carries Claude Code's 1M-context
+# selector; its api_id is the bare `claude-opus-4-8`. This reflects upstream convention,
+# not internal inconsistency.
 #
 # See: M16-derivation-architecture.md §3 for schema definition and field semantics.
 
-version: "1.0.0"
-version_date: "2026-04-08"
-description: "Claude Code platform defaults — claude-opus-4-6 / claude-sonnet-4-6 / claude-haiku-4-5 generation"
+version: "1.1.0"
+version_date: "2026-07-17"
+description: "Claude Code platform defaults — claude-fable-5 / claude-opus-4-8 / claude-sonnet-5 / claude-haiku-4-5 generation"
 
 platform:
   tools:
@@ -121,25 +123,32 @@ platform:
   models:
     # Symbolic id: used in derivation chains and human-readable references
     # api_id: actual string for Claude Code model parameter and settings.json
-    # cost_ratio: relative input token cost, haiku = 1.0 baseline
+    # cost_ratio: relative input token cost, opus[1m] (implementation tier) = 1.0 baseline
+    #             (mirrors reference/execution-protocol.md Model Selection table)
     - id: "haiku"
       api_id: "claude-haiku-4-5-20251001"
-      tier: "routine"
-      context_window: 200000    # confirmed: Anthropic docs (2026-04-08) — 200K context
+      tier: "routine"           # available; selection routes routine-tier work to sonnet — haiku is the lighter-weight fallback
+      context_window: 200000    # confirmed: Anthropic docs — 200K context
       max_output_tokens: 64000
-      cost_ratio: 1.0
+      cost_ratio: 0.2           # $1 input / $5 opus baseline
     - id: "sonnet"
-      api_id: "claude-sonnet-4-6"
-      tier: "implementation"
-      context_window: 1000000   # confirmed: Anthropic docs (2026-04-08) — 1M context
-      max_output_tokens: 64000
-      cost_ratio: 3.0
-    - id: "opus"
-      api_id: "claude-opus-4-6"
-      tier: "reasoning"
-      context_window: 1000000   # confirmed: system prompt states "1M context"
+      api_id: "claude-sonnet-5"
+      tier: "routine"
+      context_window: 1000000   # confirmed: Anthropic docs (2026-07-17) — 1M context
       max_output_tokens: 128000
-      cost_ratio: 5.0
+      cost_ratio: 0.6           # $3 input / $5 opus baseline
+    - id: "opus[1m]"
+      api_id: "claude-opus-4-8"
+      tier: "implementation"
+      context_window: 1000000   # confirmed: Anthropic docs (2026-07-17) — 1M context (default)
+      max_output_tokens: 128000
+      cost_ratio: 1.0           # baseline ($5 input)
+    - id: "fable"
+      api_id: "claude-fable-5"
+      tier: "reasoning"
+      context_window: 1000000   # confirmed: Anthropic docs (2026-07-17) — 1M context
+      max_output_tokens: 128000
+      cost_ratio: 2.0           # $10 input / $5 opus baseline
 
   hooks:
     - point: "SubagentStart"
