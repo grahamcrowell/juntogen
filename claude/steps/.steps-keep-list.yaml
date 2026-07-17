@@ -1,11 +1,12 @@
 # .steps-keep-list.yaml — BL-025-h step-prompt vocabulary audit exemptions.
 #
-# PURPOSE: Enumerate the [EXTERNAL] platform-fact occurrences inside the
+# PURPOSE: Enumerate the [EXTERNAL] platform-fact terms inside the
 #          juntogen step-prompt corpus (juntogen/claude/steps/*.md) that
 #          legitimately reference Claude-platform identifiers
 #          (Task tool / TeamCreate / TeamDelete / SendMessage /
-#          SubagentStart). Every occurrence outside this list is flagged
-#          by step-prompt-vocabulary-audit.sh.
+#          SubagentStart). Any occurrence of a banned term in a file that
+#          is NOT exempted here is flagged by
+#          step-prompt-vocabulary-audit.sh.
 #
 # SCOPE:   juntogen/claude/steps/ ONLY. Distinct from the spec-corpus
 #          keep_list in juntospec/platform-contract.yaml. The two regimes
@@ -22,13 +23,30 @@
 #            (Triage scoring, Design intent, Synthesis instructions) to
 #            the abstract primitive vocabulary.
 #
+# EXEMPTION MODEL — FILE-SCOPED (OJ-16):
+#   An entry pairs a (file, term). It means "this term is allowed
+#   ANYWHERE in this file." There is NO line: field. This makes the
+#   exemption immune to line moves: inserting or deleting lines above a
+#   legitimate occurrence no longer desyncs the audit. (The prior model
+#   anchored each occurrence to an exact file:line, which shifted and
+#   desynced every time an unrelated edit inserted lines above it —
+#   producing false term-mismatch and banned-term-bleed failures. That
+#   recurred more than once and motivated this migration.)
+#
+#   DELIBERATE PRECISION TRADE-OFF: file-scoping is coarser than
+#   line-anchoring. A second, unreviewed occurrence of an already-allowed
+#   term in the same file is out of detection scope by design; the audit
+#   guards the file-doesn't-mention-this-term-at-all regression class
+#   (a term newly appearing in a file that has no exemption for it), not
+#   occurrence count within an already-exempted file. This is the
+#   accepted cost of line-move immunity.
+#
 # Entry shape:
-#   - file: "step-09-settings-and-hooks.md"
-#     line: 52
+#   - file: "step-00-platform-ingestion.md"
 #     term: "TeamCreate"
 #     match_kind: "literal"
-#     reason: "platform-fact-env-var-doc"
-#     note: "Free-form rationale"
+#     reason: "capability-schema"
+#     note: "Free-form rationale for WHY this term belongs in this file."
 #
 # Permitted reasons (step-prompt audit enum):
 #   capability-schema           — step-00 platform.tools / hooks YAML rows
@@ -40,7 +58,7 @@
 #   settings-json-binding       — step-09 settings.json hook block refs
 #   teardown-binding            — step-06 Convene primitive teardown call
 #                                 (shutdown_request / TeamDelete)
-#   platform-fact-env-var-doc   — step-09:52 env-var documentation
+#   platform-fact-env-var-doc   — step-09 env-var documentation
 #   convene-fallback-binding    — step-01/step-06/step-07 prose documenting
 #                                 the Convene→Consult fallback path (Axiom 8).
 #                                 The fallback explicitly enumerates the
@@ -55,299 +73,108 @@
 keep_list:
 
   # ── step-00: Platform capability ingestion ──────────────────────────
-  # Capability schema YAML rows — frozen platform-tool name list.
+  # Capability schema YAML rows + didactic schema prose — frozen
+  # platform-tool / hook name list.
   - file: "step-00-platform-ingestion.md"
-    line: 65
     term: "Task tool"
     match_kind: "literal"
     reason: "capability-schema"
-    note: "Schema comment binding 'Agent' (platform name) to 'Task tool' (legacy spec vocabulary)."
+    note: "Schema comment binding 'Agent' (platform name) to 'Task tool' (legacy spec vocabulary), plus capability-schema-prose didactic notes elsewhere in the file explaining that the platform 'Agent' is referred to as 'Task tool' in the spec corpus."
   - file: "step-00-platform-ingestion.md"
-    line: 69
     term: "TeamCreate"
     match_kind: "literal"
     reason: "capability-schema"
-    note: "platform.tools[] YAML row enumerating TeamCreate."
+    note: "platform.tools[] YAML row enumerating the TeamCreate platform tool in the capability schema."
   - file: "step-00-platform-ingestion.md"
-    line: 72
     term: "TeamDelete"
     match_kind: "literal"
     reason: "capability-schema"
-    note: "platform.tools[] YAML row enumerating TeamDelete."
+    note: "platform.tools[] YAML row enumerating the TeamDelete platform tool in the capability schema."
   - file: "step-00-platform-ingestion.md"
-    line: 75
     term: "SendMessage"
     match_kind: "literal"
     reason: "capability-schema"
-    note: "platform.tools[] YAML row enumerating SendMessage."
+    note: "platform.tools[] YAML row enumerating the SendMessage platform tool in the capability schema."
   - file: "step-00-platform-ingestion.md"
-    line: 161
     term: "SubagentStart"
     match_kind: "literal"
     reason: "capability-schema"
-    note: "platform.hooks[] YAML row enumerating the SubagentStart hook point."
-  - file: "step-00-platform-ingestion.md"
-    line: 175
-    term: "Task tool"
-    match_kind: "literal"
-    reason: "capability-schema-prose"
-    note: "Didactic note: 'Agent' on the platform is referred to as 'Task tool' in spec corpus."
-  - file: "step-00-platform-ingestion.md"
-    line: 182
-    term: "SubagentStart"
-    match_kind: "literal"
-    reason: "capability-schema-prose"
-    note: "Hook matchers note: SubagentStart fires for general-purpose agents."
-  - file: "step-00-platform-ingestion.md"
-    line: 279
-    term: "SubagentStart"
-    match_kind: "literal"
-    reason: "capability-schema-prose"
-    note: "Verification checklist item: hooks section present with SubagentStart entry."
-  - file: "step-00-platform-ingestion.md"
-    line: 307
-    term: "SubagentStart"
-    match_kind: "literal"
-    reason: "capability-schema-prose"
-    note: "Audit note describing step-07's consumption of hooks[point=SubagentStart].matchers[0]."
-  - file: "step-00-platform-ingestion.md"
-    line: 319
-    term: "SubagentStart"
-    match_kind: "literal"
-    reason: "capability-schema-prose"
-    note: "Output binding: step-07 consumes hooks[point=SubagentStart].matchers[0]."
-  - file: "step-00-platform-ingestion.md"
-    line: 320
-    term: "SubagentStart"
-    match_kind: "literal"
-    reason: "capability-schema-prose"
-    note: "Output binding: step-09 consumes hooks for SubagentStart hook configuration."
+    note: "platform.hooks[] YAML row enumerating the SubagentStart hook point, plus capability-schema-prose usages: hook-matcher notes, the verification checklist item asserting the hooks section carries a SubagentStart entry, and output-binding notes describing how step-07/step-09 consume hooks[point=SubagentStart].matchers[0]."
 
-  # -- step-01: Convene fallback + inject-profile prose --
+  # -- step-01: Convene fallback prose (Axiom 8 degraded path) --
   - file: "step-01-scaffold-and-protocol.md"
-    line: 251
     term: "TeamCreate"
     match_kind: "literal"
     reason: "convene-fallback-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'TeamCreate' at step-01-scaffold-and-protocol.md:251. Context: - When `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` is unset (or the host disables the agent-teams feature), `TeamCreate`, `TeamDelete`, `shu..."
+    note: "Fallback prose enumerating the agent-teams tools that become unavailable when CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS is unset, and warning that adopters otherwise hit 'Unknown tool: TeamCreate'. Platform-fact reference, not spec vocabulary."
   - file: "step-01-scaffold-and-protocol.md"
-    line: 251
     term: "SendMessage"
     match_kind: "literal"
     reason: "convene-fallback-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'SendMessage' at step-01-scaffold-and-protocol.md:251. Context: - When `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` is unset (or the host disables the agent-teams feature), `TeamCreate`, `TeamDelete`, `shu..."
+    note: "Fallback prose enumerating SendMessage among the agent-teams tools that become unavailable when the substrate is off. Platform-fact reference, not spec vocabulary."
   - file: "step-01-scaffold-and-protocol.md"
-    line: 252
     term: "Task tool"
     match_kind: "literal"
     reason: "convene-fallback-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'Task tool' at step-01-scaffold-and-protocol.md:252. Context: - In that case, Complex tier degrades to a deputy-coordinator parallel-Task-tool fan-out: spawn ONE general-purpose deputy coordinator vi..."
-  - file: "step-01-scaffold-and-protocol.md"
-    line: 252
-    term: "SendMessage"
-    match_kind: "literal"
-    reason: "convene-fallback-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'SendMessage' at step-01-scaffold-and-protocol.md:252. Context: - In that case, Complex tier degrades to a deputy-coordinator parallel-Task-tool fan-out: spawn ONE general-purpose deputy coordinator vi..."
-  - file: "step-01-scaffold-and-protocol.md"
-    line: 255
-    term: "TeamCreate"
-    match_kind: "literal"
-    reason: "convene-fallback-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'TeamCreate' at step-01-scaffold-and-protocol.md:255. Context: - **Runtime backstop (probe is a hint, not a guarantee)**: the generated Fallback clause MUST instruct the manager that `agent-teams-chec..."
-  - file: "step-01-scaffold-and-protocol.md"
-    line: 255
-    term: "SendMessage"
-    match_kind: "literal"
-    reason: "convene-fallback-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'SendMessage' at step-01-scaffold-and-protocol.md:255. Context: - **Runtime backstop (probe is a hint, not a guarantee)**: the generated Fallback clause MUST instruct the manager that `agent-teams-chec..."
-  - file: "step-01-scaffold-and-protocol.md"
-    line: 257
-    term: "TeamCreate"
-    match_kind: "literal"
-    reason: "convene-fallback-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'TeamCreate' at step-01-scaffold-and-protocol.md:257. Context: This Fallback clause is load-bearing — without it, adopters whose environments disable the agent-teams flag hit 'Unknown tool: TeamCreate..."
+    note: "Fallback prose naming the Task tool as the deputy-coordinator spawn primitive that replaces the agent-teams substrate in the degraded Complex-tier path. Platform-fact reference, not spec vocabulary."
 
-  # -- step-03: inject-profile + spawn platform-fact refs --
+  # -- step-03: inject-profile + convene-fallback platform-fact refs --
   - file: "step-03-agent-profiles.md"
-    line: 93
     term: "SubagentStart"
     match_kind: "literal"
     reason: "inject-profile-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'SubagentStart' at step-03-agent-profiles.md:93. Context: Do NOT emit any other frontmatter keys — specifically NO `model:`, NO `effort:`, NO `tools:` fields (those are explicitly out of scope fo..."
+    note: "Profile-frontmatter contract prose referencing the SubagentStart hook by which oj-helper inject-profile injects profiles as additionalContext. Platform-fact reference."
   - file: "step-03-agent-profiles.md"
-    line: 95
     term: "Task tool"
     match_kind: "literal"
     reason: "convene-fallback-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'Task tool' at step-03-agent-profiles.md:95. Context: The full profile's frontmatter is stripped before injection as additionalContext by `oj-helper inject-profile` (step-07) — the profile bo..."
+    note: "Prose describing that full-profile frontmatter is stripped before injection into general-purpose Task spawns. Platform-fact reference, not spec vocabulary."
 
-  # -- step-04: execution-protocol.md platform-fact refs --
+  # -- step-04: execution-protocol reference-file platform-fact refs --
   - file: "step-04-reference-files.md"
-    line: 206
     term: "Task tool"
     match_kind: "literal"
     reason: "convene-fallback-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'Task tool' at step-04-reference-files.md:206. Context: - **Effort out-of-scope note**: per-expert effort is not controllable today — profiles are injected into `general-purpose` Task spawns vi..."
+    note: "Effort-out-of-scope note explaining that per-expert effort is not controllable because profiles are injected into general-purpose Task spawns. Platform-fact reference, not spec vocabulary."
   - file: "step-04-reference-files.md"
-    line: 206
     term: "SubagentStart"
     match_kind: "literal"
     reason: "inject-profile-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'SubagentStart' at step-04-reference-files.md:206. Context: - **Effort out-of-scope note**: per-expert effort is not controllable today — profiles are injected into `general-purpose` Task spawns vi..."
+    note: "Same effort-out-of-scope note referencing the SubagentStart injection path used to deliver profiles. Platform-fact reference."
 
   # -- step-06: skill prompts (BL-025-m.2: commands -> skills) --
   - file: "step-06-commands.md"
-    line: 67
     term: "Task tool"
     match_kind: "literal"
     reason: "convene-fallback-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'Task tool' at step-06-commands.md:67. Context: - Execution-model branches: Simple (inline perspective rotation), Moderate (3-phase Task tool engagement), Complex (parallel team via Con..."
+    note: "Execution-model branch prose naming the Task tool for Moderate 3-phase engagement and the deputy-coordinator parallel-Consult fan-out in the Convene→Consult fallback. Platform-fact reference, not spec vocabulary."
   - file: "step-06-commands.md"
-    line: 68
-    term: "Task tool"
-    match_kind: "literal"
-    reason: "convene-fallback-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'Task tool' at step-06-commands.md:68. Context: - **Per-spawn `model` directive (Moderate + Complex branches)**: BOTH the Moderate (3-phase) branch and the Complex branch MUST instruct ..."
-  - file: "step-06-commands.md"
-    line: 70
     term: "TeamCreate"
     match_kind: "literal"
     reason: "convene-fallback-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'TeamCreate' at step-06-commands.md:70. Context: - when `.available == true`: proceed with TeamCreate exactly as the existing Complex branch describes."
+    note: "Complex-branch prose describing when to proceed with TeamCreate (agent-teams available) versus the deputy-coordinator fallback (unavailable). Platform-fact reference, not spec vocabulary."
   - file: "step-06-commands.md"
-    line: 71
-    term: "Task tool"
-    match_kind: "literal"
-    reason: "convene-fallback-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'Task tool' at step-06-commands.md:71. Context: - when `.available == false`: follow the deputy-coordinator parallel-Consult fan-out pattern documented in `juntospec/D32-execution-model..."
-  - file: "step-06-commands.md"
-    line: 71
-    term: "TeamCreate"
-    match_kind: "literal"
-    reason: "convene-fallback-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'TeamCreate' at step-06-commands.md:71. Context: - when `.available == false`: follow the deputy-coordinator parallel-Consult fan-out pattern documented in `juntospec/D32-execution-model..."
-  - file: "step-06-commands.md"
-    line: 71
     term: "SendMessage"
     match_kind: "literal"
     reason: "convene-fallback-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'SendMessage' at step-06-commands.md:71. Context: - when `.available == false`: follow the deputy-coordinator parallel-Consult fan-out pattern documented in `juntospec/D32-execution-model..."
+    note: "Complex-branch fallback prose enumerating SendMessage among the agent-teams tools gated on the availability probe. Platform-fact reference, not spec vocabulary."
   - file: "step-06-commands.md"
-    line: 73
-    term: "TeamCreate"
-    match_kind: "literal"
-    reason: "convene-fallback-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'TeamCreate' at step-06-commands.md:73. Context: - **Runtime backstop (probe is a hint, not a guarantee)**: the generated Complex branch MUST further instruct the skill that `agent-teams..."
-  - file: "step-06-commands.md"
-    line: 73
-    term: "SendMessage"
-    match_kind: "literal"
-    reason: "convene-fallback-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'SendMessage' at step-06-commands.md:73. Context: - **Runtime backstop (probe is a hint, not a guarantee)**: the generated Complex branch MUST further instruct the skill that `agent-teams..."
-  - file: "step-06-commands.md"
-    line: 90
     term: "SubagentStart"
     match_kind: "literal"
     reason: "teardown-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'SubagentStart' at step-06-commands.md:90. Context: description: Diagnose OpenJunto plugin runtime health — verify CONDUCTOR.md injection, oj-helper availability, jq dependency, plugin mani..."
-  - file: "step-06-commands.md"
-    line: 106
-    term: "SubagentStart"
-    match_kind: "literal"
-    reason: "teardown-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'SubagentStart' at step-06-commands.md:106. Context: - Probe 5: SubagentStart hook wiring (`hooks/hooks.json` matcher inspection)"
-  - file: "step-06-commands.md"
-    line: 128
-    term: "Task tool"
-    match_kind: "literal"
-    reason: "convene-fallback-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'Task tool' at step-06-commands.md:128. Context: - Phase 3 — Plan & Execute: Stakeholder engagement plan; execution by tier (Simple inline / Moderate 3-phase / Complex Convene). **Per-sp..."
-  - file: "step-06-commands.md"
-    line: 128
-    term: "TeamCreate"
-    match_kind: "literal"
-    reason: "convene-fallback-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'TeamCreate' at step-06-commands.md:128. Context: - Phase 3 — Plan & Execute: Stakeholder engagement plan; execution by tier (Simple inline / Moderate 3-phase / Complex Convene). **Per-sp..."
-  - file: "step-06-commands.md"
-    line: 128
-    term: "SendMessage"
-    match_kind: "literal"
-    reason: "convene-fallback-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'SendMessage' at step-06-commands.md:128. Context: - Phase 3 — Plan & Execute: Stakeholder engagement plan; execution by tier (Simple inline / Moderate 3-phase / Complex Convene). **Per-sp..."
+    note: "Health-check skill description and probe listing referencing SubagentStart hook wiring inspection (hooks/hooks.json matcher). Platform-fact reference."
 
   # -- step-07: oj-helper inject-profile contract --
   - file: "step-07-helper-script.md"
-    line: 17
     term: "SubagentStart"
     match_kind: "literal"
     reason: "inject-profile-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'SubagentStart' at step-07-helper-script.md:17. Context: - `hooks` — use `hooks[point='SubagentStart'].matchers[0]` as the agent type string used in the `inject-profile` subcommand to filter whi..."
+    note: "oj-helper inject-profile contract prose: SubagentStart is the hook that invokes inject-profile, and the agent-type filter is resolved from hooks[point='SubagentStart'].matchers[0]. Multiple platform-fact references across the subcommand spec and invocation notes."
   - file: "step-07-helper-script.md"
-    line: 73
-    term: "SubagentStart"
-    match_kind: "literal"
-    reason: "inject-profile-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'SubagentStart' at step-07-helper-script.md:73. Context: Implement these subcommands (in order). The list below enumerates ALL 12 subcommands; the generated `oj-helper` MUST implement every one...."
-  - file: "step-07-helper-script.md"
-    line: 77
-    term: "SubagentStart"
-    match_kind: "literal"
-    reason: "inject-profile-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'SubagentStart' at step-07-helper-script.md:77. Context: 1. `cmd_inject_profile`         — SubagentStart hook (§1)"
-  - file: "step-07-helper-script.md"
-    line: 90
-    term: "SubagentStart"
-    match_kind: "literal"
-    reason: "inject-profile-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'SubagentStart' at step-07-helper-script.md:90. Context: #### 1. inject-profile — SubagentStart Hook"
-  - file: "step-07-helper-script.md"
-    line: 94
-    term: "SubagentStart"
-    match_kind: "literal"
-    reason: "inject-profile-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'SubagentStart' at step-07-helper-script.md:94. Context: **Invocation**: Called by Claude Code's SubagentStart hook. Reads hook JSON from stdin."
-  - file: "step-07-helper-script.md"
-    line: 98
-    term: "SubagentStart"
-    match_kind: "literal"
-    reason: "inject-profile-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'SubagentStart' at step-07-helper-script.md:98. Context: > **[EXTERNAL]** — the agent type filter string (step 3 below) is a platform fact. Resolve from `platform-snapshot.yaml` → `hooks[point='..."
-  - file: "step-07-helper-script.md"
-    line: 102
-    term: "SubagentStart"
-    match_kind: "literal"
-    reason: "inject-profile-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'SubagentStart' at step-07-helper-script.md:102. Context: 3. **Filter agent type**: Only process agents matching the SubagentStart hook matcher. Resolve `hooks[point='SubagentStart'].matchers[0]`..."
-  - file: "step-07-helper-script.md"
-    line: 123
-    term: "SubagentStart"
-    match_kind: "literal"
-    reason: "inject-profile-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'SubagentStart' at step-07-helper-script.md:123. Context: 'hookEventName': 'SubagentStart',"
-  - file: "step-07-helper-script.md"
-    line: 134
-    term: "SubagentStart"
-    match_kind: "literal"
-    reason: "inject-profile-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'SubagentStart' at step-07-helper-script.md:134. Context: - 'skipping agent_type='X' (not [resolved-matcher])' — where `[resolved-matcher]` is the value resolved from `platform-snapshot.yaml` → `..."
-  - file: "step-07-helper-script.md"
-    line: 319
     term: "TeamCreate"
     match_kind: "literal"
     reason: "convene-fallback-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'TeamCreate' at step-07-helper-script.md:319. Context: **Purpose**: Report whether the host environment has the Claude Code experimental agent-teams feature enabled (the substrate that binds t..."
-  - file: "step-07-helper-script.md"
-    line: 396
-    term: "SubagentStart"
-    match_kind: "literal"
-    reason: "inject-profile-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'SubagentStart' at step-07-helper-script.md:396. Context: inject-profile       Inject expert profile into spawned sub-agents (SubagentStart hook)"
-  - file: "step-07-helper-script.md"
-    line: 473
-    term: "SubagentStart"
-    match_kind: "literal"
-    reason: "inject-profile-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'SubagentStart' at step-07-helper-script.md:473. Context: - **Step 00**: `platform-snapshot.yaml` must be available (for SubagentStart hook matcher used in inject-profile agent type filter)"
+    note: "agent-teams-check subcommand prose reporting whether the host has the experimental agent-teams feature (the substrate that binds TeamCreate). Platform-fact reference, not spec vocabulary."
 
   # ── step-08: RETIRED (BL-025-m.1) ───────────────────────────────────
   # Makefile installer obsolete in plugin form. step-08-installer.md
