@@ -101,6 +101,21 @@ EOF
     printf '%s' "${td}"
 }
 
+# Build an isolated steps tree with one synthetic step file AND a
+# caller-supplied .steps-keep-list.yaml body (OJ-16 file-scoped Pass 1/2
+# coverage). $1 = step file content, $2 = keep_list YAML body (verbatim,
+# including the `keep_list:` key). Returns the tempdir on stdout;
+# appends it to TMPDIRS for trap cleanup.
+make_isolated_steps_tree_with_keep() {
+    local content="$1" keep_body="$2"
+    local td
+    td=$(mktemp -d -t step-vocab-oj16-XXXXXX)
+    TMPDIRS+=("${td}")
+    printf '%s\n' "${content}" > "${td}/step-99-fixture.md"
+    printf '%s\n' "${keep_body}" > "${td}/.steps-keep-list.yaml"
+    printf '%s' "${td}"
+}
+
 # Run the audit against an isolated STEPS_DIR. Captures exit code +
 # stderr to caller-supplied paths.
 run_audit() {
@@ -421,6 +436,354 @@ EOF
     fi
 }
 
+# ═════════════════════════════════════════════════════════════════════
+# OJ-16 file-scoped keep_list coverage (Pass 1 stale-entry + Pass 2
+# banned-term-bleed). Before OJ-16 every fixture used `keep_list: []`, so
+# the keep_list loader, Pass 1, and the keep_list-consulting branch of
+# Pass 2 had ZERO coverage. These scenarios exercise them.
+# ═════════════════════════════════════════════════════════════════════
+
+# MUST-HAVE 1 — line-insertion-immunity (the crux regression proof).
+# A step file with a banned term (TeamCreate) + a file-scoped keep_list
+# entry for it audits clean. A SECOND variant with several lines inserted
+# ABOVE the occurrence, keep_list UNCHANGED, is STILL clean. This is the
+# exact bug OJ-16 fixes (line-anchored entries desynced on line moves).
+run_line_insertion_immunity_scenario() {
+    local keep_body="keep_list:
+  - file: \"step-99-fixture.md\"
+    term: \"TeamCreate\"
+    match_kind: \"literal\"
+    reason: \"convene-fallback-binding\"
+    note: \"file-scoped exemption for TeamCreate anywhere in this fixture\""
+
+    # Variant A: occurrence near the top.
+    local steps_td stderr_log exit_code errors=""
+    steps_td=$(make_isolated_steps_tree_with_keep "# Synthetic fixture step
+
+Proceed with TeamCreate exactly as the Complex branch describes.
+
+End of fixture." "${keep_body}")
+    stderr_log=$(mktemp -t step-vocab-oj16-stderr-XXXXXX); TMPDIRS+=("${stderr_log}")
+    exit_code=$(run_audit "${steps_td}" "${stderr_log}")
+    local stderr_a; stderr_a=$(cat "${stderr_log}")
+    if [ "${exit_code}" -ne 0 ]; then
+        errors="${errors}    variant A: expected clean exit 0, got ${exit_code}"$'\n'
+    fi
+    if printf '%s' "${stderr_a}" | grep -qE "banned-term-bleed|term-mismatch|stale-keep-list-entry"; then
+        errors="${errors}    variant A: unexpected violation fired on exempted TeamCreate"$'\n'
+    fi
+
+    # Variant B: SAME keep_list, several lines inserted ABOVE the term.
+    local steps_td_b stderr_log_b exit_code_b
+    steps_td_b=$(make_isolated_steps_tree_with_keep "# Synthetic fixture step
+
+Line inserted above 1.
+Line inserted above 2.
+Line inserted above 3.
+Line inserted above 4.
+Line inserted above 5.
+
+Proceed with TeamCreate exactly as the Complex branch describes.
+
+End of fixture." "${keep_body}")
+    stderr_log_b=$(mktemp -t step-vocab-oj16-stderr-XXXXXX); TMPDIRS+=("${stderr_log_b}")
+    exit_code_b=$(run_audit "${steps_td_b}" "${stderr_log_b}")
+    local stderr_b; stderr_b=$(cat "${stderr_log_b}")
+    if [ "${exit_code_b}" -ne 0 ]; then
+        errors="${errors}    variant B (lines inserted above): expected clean exit 0, got ${exit_code_b} — line-move immunity BROKEN"$'\n'
+    fi
+    if printf '%s' "${stderr_b}" | grep -qE "banned-term-bleed|term-mismatch|stale-keep-list-entry"; then
+        errors="${errors}    variant B: unexpected violation after line insertion — line-move immunity BROKEN"$'\n'
+    fi
+
+    if [ -z "${errors}" ]; then
+        echo -e "${GREEN}PASS${NC} oj16/line-insertion-immunity (TeamCreate exempt both before and after inserting lines above it)"
+        PASS_COUNT=$((PASS_COUNT + 1))
+    else
+        echo -e "${RED}FAIL${NC} oj16/line-insertion-immunity"
+        printf '%s' "${errors}"
+        echo -e "${CYAN}    variant A stderr (head -20):${NC}"; printf '%s\n' "${stderr_a}" | head -20 | sed 's/^/      /'
+        echo -e "${CYAN}    variant B stderr (head -20):${NC}"; printf '%s\n' "${stderr_b}" | head -20 | sed 's/^/      /'
+        FAIL_COUNT=$((FAIL_COUNT + 1))
+    fi
+}
+
+# MUST-HAVE 2 — allowed-term-anywhere: a banned term at an arbitrary line
+# with an entry naming no line audits clean.
+run_allowed_term_anywhere_scenario() {
+    local keep_body="keep_list:
+  - file: \"step-99-fixture.md\"
+    term: \"SubagentStart\"
+    match_kind: \"literal\"
+    reason: \"inject-profile-binding\"
+    note: \"file-scoped exemption\""
+    local steps_td stderr_log exit_code errors=""
+    steps_td=$(make_isolated_steps_tree_with_keep "# Synthetic fixture step
+
+Padding line.
+Padding line.
+Padding line.
+Padding line.
+Padding line.
+Padding line.
+Padding line.
+
+Called by Claude Code's SubagentStart hook. Reads hook JSON from stdin.
+
+End of fixture." "${keep_body}")
+    stderr_log=$(mktemp -t step-vocab-oj16-stderr-XXXXXX); TMPDIRS+=("${stderr_log}")
+    exit_code=$(run_audit "${steps_td}" "${stderr_log}")
+    local stderr_text; stderr_text=$(cat "${stderr_log}")
+    if [ "${exit_code}" -ne 0 ]; then
+        errors="${errors}    expected clean exit 0, got ${exit_code}"$'\n'
+    fi
+    if printf '%s' "${stderr_text}" | grep -qF -- "banned-term-bleed"; then
+        errors="${errors}    banned-term-bleed fired on an entry that exempts the term anywhere in the file"$'\n'
+    fi
+    if [ -z "${errors}" ]; then
+        echo -e "${GREEN}PASS${NC} oj16/allowed-term-anywhere (SubagentStart at an arbitrary line is exempt)"
+        PASS_COUNT=$((PASS_COUNT + 1))
+    else
+        echo -e "${RED}FAIL${NC} oj16/allowed-term-anywhere"
+        printf '%s' "${errors}"
+        echo -e "${CYAN}    actual exit=${exit_code}${NC}"; printf '%s\n' "${stderr_text}" | head -20 | sed 's/^/      /'
+        FAIL_COUNT=$((FAIL_COUNT + 1))
+    fi
+}
+
+# MUST-HAVE 3 — same-term-different-file-not-exempted: the same term in a
+# file NOT on the keep_list fires banned-term-bleed. Here the keep_list
+# names a DIFFERENT file, so the fixture file's TeamCreate is unexempt.
+run_same_term_different_file_scenario() {
+    local keep_body="keep_list:
+  - file: \"step-00-some-other-file.md\"
+    term: \"TeamCreate\"
+    match_kind: \"literal\"
+    reason: \"capability-schema\"
+    note: \"exemption scoped to a DIFFERENT file, not step-99-fixture.md\""
+    local steps_td stderr_log exit_code errors=""
+    steps_td=$(make_isolated_steps_tree_with_keep "# Synthetic fixture step
+
+Proceed with TeamCreate exactly as the Complex branch describes.
+
+End of fixture." "${keep_body}")
+    stderr_log=$(mktemp -t step-vocab-oj16-stderr-XXXXXX); TMPDIRS+=("${stderr_log}")
+    exit_code=$(run_audit "${steps_td}" "${stderr_log}")
+    local stderr_text; stderr_text=$(cat "${stderr_log}")
+    if [ "${exit_code}" -eq 0 ]; then
+        errors="${errors}    expected non-zero exit (unexempt TeamCreate should fire), got 0"$'\n'
+    fi
+    if ! printf '%s' "${stderr_text}" | grep -qF -- "banned-term-bleed"; then
+        errors="${errors}    stderr missing required category: banned-term-bleed"$'\n'
+    fi
+    # The keep_list entry names a file that doesn't exist in this tree, so
+    # Pass 1 correctly flags it stale — that's expected and independent of
+    # the Pass 2 assertion above. We do not require its absence.
+    if [ -z "${errors}" ]; then
+        echo -e "${GREEN}PASS${NC} oj16/same-term-different-file-not-exempted (TeamCreate unexempt in fixture fires banned-term-bleed)"
+        PASS_COUNT=$((PASS_COUNT + 1))
+    else
+        echo -e "${RED}FAIL${NC} oj16/same-term-different-file-not-exempted"
+        printf '%s' "${errors}"
+        echo -e "${CYAN}    actual exit=${exit_code}${NC}"; printf '%s\n' "${stderr_text}" | head -20 | sed 's/^/      /'
+        FAIL_COUNT=$((FAIL_COUNT + 1))
+    fi
+}
+
+# MUST-HAVE 4 — stale-entry: an entry names (file, term) but the term is
+# absent from the file -> fires stale-keep-list-entry, non-zero.
+run_stale_entry_scenario() {
+    local keep_body="keep_list:
+  - file: \"step-99-fixture.md\"
+    term: \"TeamCreate\"
+    match_kind: \"literal\"
+    reason: \"convene-fallback-binding\"
+    note: \"stale: TeamCreate does not appear in the fixture body\""
+    local steps_td stderr_log exit_code errors=""
+    # Fixture deliberately contains NO banned terms at all.
+    steps_td=$(make_isolated_steps_tree_with_keep "# Synthetic fixture step
+
+This fixture mentions no platform tools at all. Pure spec prose.
+
+End of fixture." "${keep_body}")
+    stderr_log=$(mktemp -t step-vocab-oj16-stderr-XXXXXX); TMPDIRS+=("${stderr_log}")
+    exit_code=$(run_audit "${steps_td}" "${stderr_log}")
+    local stderr_text; stderr_text=$(cat "${stderr_log}")
+    if [ "${exit_code}" -eq 0 ]; then
+        errors="${errors}    expected non-zero exit (stale entry should fire), got 0"$'\n'
+    fi
+    if ! printf '%s' "${stderr_text}" | grep -qF -- "stale-keep-list-entry"; then
+        errors="${errors}    stderr missing required category: stale-keep-list-entry"$'\n'
+    fi
+    if ! printf '%s' "${stderr_text}" | grep -qF -- "no longer appears anywhere"; then
+        errors="${errors}    stderr missing stale-exemption detail text"$'\n'
+    fi
+    if [ -z "${errors}" ]; then
+        echo -e "${GREEN}PASS${NC} oj16/stale-entry (term absent from file fires stale-keep-list-entry)"
+        PASS_COUNT=$((PASS_COUNT + 1))
+    else
+        echo -e "${RED}FAIL${NC} oj16/stale-entry"
+        printf '%s' "${errors}"
+        echo -e "${CYAN}    actual exit=${exit_code}${NC}"; printf '%s\n' "${stderr_text}" | head -20 | sed 's/^/      /'
+        FAIL_COUNT=$((FAIL_COUNT + 1))
+    fi
+}
+
+# MUST-HAVE 5 — empty-term-rejected: term: "" must be rejected (non-zero
+# / error), never a silent whole-file wildcard. The loader rejects it and
+# the audit aborts (driver error) before any pass runs.
+run_empty_term_rejected_scenario() {
+    local keep_body="keep_list:
+  - file: \"step-99-fixture.md\"
+    term: \"\"
+    match_kind: \"literal\"
+    reason: \"convene-fallback-binding\"
+    note: \"empty term — must be rejected, never a whole-file wildcard\""
+    local steps_td stderr_log exit_code errors=""
+    # If an empty term were (wrongly) treated as a wildcard, this banned
+    # TeamCreate would be silently exempted. Correct behavior: reject.
+    steps_td=$(make_isolated_steps_tree_with_keep "# Synthetic fixture step
+
+Proceed with TeamCreate exactly as the Complex branch describes.
+
+End of fixture." "${keep_body}")
+    stderr_log=$(mktemp -t step-vocab-oj16-stderr-XXXXXX); TMPDIRS+=("${stderr_log}")
+    exit_code=$(run_audit "${steps_td}" "${stderr_log}")
+    local stderr_text; stderr_text=$(cat "${stderr_log}")
+    if [ "${exit_code}" -eq 0 ]; then
+        errors="${errors}    expected non-zero exit (empty term must be rejected), got 0 — empty term became a silent wildcard"$'\n'
+    fi
+    if ! printf '%s' "${stderr_text}" | grep -qiE "empty 'term'|empty term"; then
+        errors="${errors}    stderr missing empty-term rejection message"$'\n'
+    fi
+    # It must NOT have silently passed by exempting the banned term.
+    if [ "${exit_code}" -eq 0 ] && ! printf '%s' "${stderr_text}" | grep -qF -- "banned-term-bleed"; then
+        errors="${errors}    empty term silently exempted TeamCreate (whole-file wildcard) — CRITICAL"$'\n'
+    fi
+    if [ -z "${errors}" ]; then
+        echo -e "${GREEN}PASS${NC} oj16/empty-term-rejected (term:\"\" rejected, never a silent wildcard)"
+        PASS_COUNT=$((PASS_COUNT + 1))
+    else
+        echo -e "${RED}FAIL${NC} oj16/empty-term-rejected"
+        printf '%s' "${errors}"
+        echo -e "${CYAN}    actual exit=${exit_code}${NC}"; printf '%s\n' "${stderr_text}" | head -20 | sed 's/^/      /'
+        FAIL_COUNT=$((FAIL_COUNT + 1))
+    fi
+}
+
+# MUST-HAVE 6 — match_kind-non-literal-rejected: match_kind: "regex" must
+# still fire a rejection (Pass 1 stale-keep-list-entry for non-literal).
+run_non_literal_match_kind_scenario() {
+    local keep_body="keep_list:
+  - file: \"step-99-fixture.md\"
+    term: \"TeamCreate\"
+    match_kind: \"regex\"
+    reason: \"convene-fallback-binding\"
+    note: \"regex match_kind is unsupported and must be rejected\""
+    local steps_td stderr_log exit_code errors=""
+    steps_td=$(make_isolated_steps_tree_with_keep "# Synthetic fixture step
+
+Proceed with TeamCreate exactly as the Complex branch describes.
+
+End of fixture." "${keep_body}")
+    stderr_log=$(mktemp -t step-vocab-oj16-stderr-XXXXXX); TMPDIRS+=("${stderr_log}")
+    exit_code=$(run_audit "${steps_td}" "${stderr_log}")
+    local stderr_text; stderr_text=$(cat "${stderr_log}")
+    if [ "${exit_code}" -eq 0 ]; then
+        errors="${errors}    expected non-zero exit (non-literal match_kind should be rejected), got 0"$'\n'
+    fi
+    if ! printf '%s' "${stderr_text}" | grep -qE "stale-keep-list-entry|not literal"; then
+        errors="${errors}    stderr missing non-literal rejection (stale-keep-list-entry / 'not literal')"$'\n'
+    fi
+    if [ -z "${errors}" ]; then
+        echo -e "${GREEN}PASS${NC} oj16/match_kind-non-literal-rejected (match_kind:regex rejected)"
+        PASS_COUNT=$((PASS_COUNT + 1))
+    else
+        echo -e "${RED}FAIL${NC} oj16/match_kind-non-literal-rejected"
+        printf '%s' "${errors}"
+        echo -e "${CYAN}    actual exit=${exit_code}${NC}"; printf '%s\n' "${stderr_text}" | head -20 | sed 's/^/      /'
+        FAIL_COUNT=$((FAIL_COUNT + 1))
+    fi
+}
+
+# NICE-TO-HAVE — accepted-gap documentation. This scenario DOCUMENTS (does
+# NOT guard) the deliberate precision trade-off of file-scoping: the same
+# allowed term appearing TWICE in an allowed file is silent on BOTH
+# occurrences. A second, unreviewed occurrence of an already-allowed term
+# is out of detection scope by design (see .steps-keep-list.yaml header).
+# If a future change re-introduced per-occurrence review, this scenario
+# would need to change — that is the intended signal.
+run_accepted_gap_documentation_scenario() {
+    local keep_body="keep_list:
+  - file: \"step-99-fixture.md\"
+    term: \"TeamCreate\"
+    match_kind: \"literal\"
+    reason: \"convene-fallback-binding\"
+    note: \"one entry exempts every occurrence in the file\""
+    local steps_td stderr_log exit_code errors=""
+    steps_td=$(make_isolated_steps_tree_with_keep "# Synthetic fixture step
+
+First occurrence: proceed with TeamCreate as the Complex branch describes.
+Second occurrence: also TeamCreate here, unreviewed but silently exempt.
+
+End of fixture." "${keep_body}")
+    stderr_log=$(mktemp -t step-vocab-oj16-stderr-XXXXXX); TMPDIRS+=("${stderr_log}")
+    exit_code=$(run_audit "${steps_td}" "${stderr_log}")
+    local stderr_text; stderr_text=$(cat "${stderr_log}")
+    if [ "${exit_code}" -ne 0 ]; then
+        errors="${errors}    expected clean exit 0 (both occurrences exempt by design), got ${exit_code}"$'\n'
+    fi
+    if printf '%s' "${stderr_text}" | grep -qF -- "banned-term-bleed"; then
+        errors="${errors}    banned-term-bleed fired — file-scoping should silence BOTH occurrences (accepted gap)"$'\n'
+    fi
+    if [ -z "${errors}" ]; then
+        echo -e "${GREEN}PASS${NC} oj16/accepted-gap-documentation (two occurrences of an allowed term both silent — DOCUMENTS the deliberate gap)"
+        PASS_COUNT=$((PASS_COUNT + 1))
+    else
+        echo -e "${RED}FAIL${NC} oj16/accepted-gap-documentation"
+        printf '%s' "${errors}"
+        echo -e "${CYAN}    actual exit=${exit_code}${NC}"; printf '%s\n' "${stderr_text}" | head -20 | sed 's/^/      /'
+        FAIL_COUNT=$((FAIL_COUNT + 1))
+    fi
+}
+
+# NICE-TO-HAVE — case-sensitivity: the term match is case-sensitive
+# (literal substring). A keep_list entry for \"teamcreate\" (lowercase)
+# does NOT exempt the banned \"TeamCreate\" occurrence -> banned-term-bleed
+# fires, AND the lowercase entry is stale (absent from the file).
+run_case_sensitivity_scenario() {
+    local keep_body="keep_list:
+  - file: \"step-99-fixture.md\"
+    term: \"teamcreate\"
+    match_kind: \"literal\"
+    reason: \"convene-fallback-binding\"
+    note: \"lowercase term must not exempt the capitalized banned term\""
+    local steps_td stderr_log exit_code errors=""
+    steps_td=$(make_isolated_steps_tree_with_keep "# Synthetic fixture step
+
+Proceed with TeamCreate exactly as the Complex branch describes.
+
+End of fixture." "${keep_body}")
+    stderr_log=$(mktemp -t step-vocab-oj16-stderr-XXXXXX); TMPDIRS+=("${stderr_log}")
+    exit_code=$(run_audit "${steps_td}" "${stderr_log}")
+    local stderr_text; stderr_text=$(cat "${stderr_log}")
+    if [ "${exit_code}" -eq 0 ]; then
+        errors="${errors}    expected non-zero exit (case-mismatched entry should not exempt), got 0"$'\n'
+    fi
+    if ! printf '%s' "${stderr_text}" | grep -qF -- "banned-term-bleed"; then
+        errors="${errors}    stderr missing banned-term-bleed (lowercase entry wrongly exempted TeamCreate)"$'\n'
+    fi
+    if [ -z "${errors}" ]; then
+        echo -e "${GREEN}PASS${NC} oj16/case-sensitivity (lowercase 'teamcreate' does not exempt 'TeamCreate')"
+        PASS_COUNT=$((PASS_COUNT + 1))
+    else
+        echo -e "${RED}FAIL${NC} oj16/case-sensitivity"
+        printf '%s' "${errors}"
+        echo -e "${CYAN}    actual exit=${exit_code}${NC}"; printf '%s\n' "${stderr_text}" | head -20 | sed 's/^/      /'
+        FAIL_COUNT=$((FAIL_COUNT + 1))
+    fi
+}
+
 echo -e "${YELLOW}[INFO]${NC} BL-025-h.3 + BL-025-m.2 step-prompt-vocabulary-audit regression test"
 echo -e "${YELLOW}[INFO]${NC} audit:    ${AUDIT}"
 echo -e "${YELLOW}[INFO]${NC} spec dir: ${SPEC_DIR}"
@@ -432,6 +795,16 @@ run_positive_in_prose_citation_scenario
 run_negative_legacy_src_form_scenario
 run_positive_clean_prompt_scenario
 run_positive_help_bypass_scenario
+
+# OJ-16 file-scoped keep_list coverage (Pass 1 + Pass 2).
+run_line_insertion_immunity_scenario
+run_allowed_term_anywhere_scenario
+run_same_term_different_file_scenario
+run_stale_entry_scenario
+run_empty_term_rejected_scenario
+run_non_literal_match_kind_scenario
+run_accepted_gap_documentation_scenario
+run_case_sensitivity_scenario
 
 echo
 echo "================================"

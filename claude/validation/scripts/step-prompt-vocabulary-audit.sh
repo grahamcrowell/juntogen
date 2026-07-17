@@ -28,6 +28,20 @@
 #            emit a structured `CATEGORY: banned-term-bleed` line on
 #            stderr and the script exits non-zero.
 #
+# KEEP_LIST MODEL — FILE-SCOPED (OJ-16): the keep_list is loaded into a
+#            3-column TSV (file<TAB>term<TAB>match_kind). Each entry means
+#            "this term is allowed ANYWHERE in this file." There is no
+#            line: field — exemptions are immune to line moves (an
+#            unrelated edit inserting lines above a legitimate occurrence
+#            no longer desyncs the audit). Membership is a pure
+#            (file, term) test in Pass 2. Pass 1 is a stale-entry guard:
+#            it verifies each keep_list term still appears at least once
+#            in its file. The precision trade-off is deliberate: a second
+#            occurrence of an already-allowed term in the same file is out
+#            of detection scope; the audit guards the
+#            file-doesn't-mention-this-term-at-all regression class, not
+#            occurrence count.
+#
 # EXIT CODES:
 #   0 — all checks pass
 #   1 — one or more violations
@@ -43,6 +57,8 @@
 #
 # Structured stderr lines mirror vocabulary-audit.sh:
 #   CATEGORY: <kind> | FILE: <path> | LINE: <line> | DETAIL: <free-form>
+#   (Pass 1 stale-entry violations carry no meaningful source line and
+#    report LINE: - .)
 
 set -euo pipefail
 
@@ -113,23 +129,31 @@ BANNED_COUNT=$(printf '%s\n' "${BANNED_TSV}" | grep -c . || true)
 
 # ── Load step-prompt keep_list ───────────────────────────────────────────
 # Inline python: emit one TSV row per keep_list entry.
-# Columns: file<TAB>line<TAB>term<TAB>match_kind
+# Columns: file<TAB>term<TAB>match_kind  (OJ-16: file-scoped; no line).
+# An empty term field is rejected with a non-zero exit — an empty term
+# would otherwise become a whole-file wildcard exempting every banned
+# term in the file, defeating the audit.
 KEEP_TSV=$(python3 - "${KEEP_YAML}" <<'PY'
 import sys, yaml
 path = sys.argv[1]
 with open(path) as f:
     doc = yaml.safe_load(f) or {}
 entries = doc.get("keep_list", []) or []
-for entry in entries:
+for i, entry in enumerate(entries):
     file_v = str(entry.get("file", ""))
-    line_v = str(entry.get("line", ""))
     term_v = str(entry.get("term", ""))
     kind_v = str(entry.get("match_kind", "literal"))
-    for fname, val in (("file", file_v), ("line", line_v), ("term", term_v), ("kind", kind_v)):
+    if term_v.strip() == "":
+        sys.stderr.write(
+            f"ERROR: keep_list entry #{i} (file={file_v!r}) has an empty 'term' "
+            f"— an empty term would exempt every banned term in the file (whole-file wildcard). Rejected.\n"
+        )
+        sys.exit(1)
+    for fname, val in (("file", file_v), ("term", term_v), ("kind", kind_v)):
         if "\t" in val or "\n" in val:
             sys.stderr.write(f"ERROR: keep_list field {fname!r} contains tab/newline: {val!r}\n")
             sys.exit(1)
-    print(f"{file_v}\t{line_v}\t{term_v}\t{kind_v}")
+    print(f"{file_v}\t{term_v}\t{kind_v}")
 PY
 )
 KEEP_COUNT=$(printf '%s\n' "${KEEP_TSV}" | grep -c . || true)
@@ -139,51 +163,46 @@ echo -e "${YELLOW}[INFO]${NC} steps dir: ${STEPS_DIR}"
 echo -e "${YELLOW}[INFO]${NC} contract:  ${CONTRACT}"
 echo
 
-# ── Pass 1: keep_list integrity (term presence) ──────────────────────────
-echo -e "${YELLOW}[INFO]${NC} Pass 1: keep_list term presence at file:line"
-while IFS=$'\t' read -r kfile kline kterm kkind; do
+# ── Pass 1: keep_list stale-entry check (file-scoped, OJ-16) ─────────────
+# For each entry, verify the file exists, the match_kind is literal, and
+# the term still appears AT LEAST ONCE anywhere in the file. An entry
+# whose term no longer appears anywhere in its file is a stale exemption
+# (the code it excused was deleted/renamed) and is flagged so it can be
+# pruned. This replaces the old line-anchored term-presence check —
+# file-scoped exemptions have no line to verify.
+echo -e "${YELLOW}[INFO]${NC} Pass 1: keep_list stale-entry check (term present somewhere in file)"
+while IFS=$'\t' read -r kfile kterm kkind; do
     [ -z "${kfile}" ] && continue
     abs="${STEPS_DIR}/${kfile}"
     if [ ! -f "${abs}" ]; then
-        emit_violation "term-mismatch" "${kfile}" "${kline}" "keep_list file does not exist under steps dir"
+        emit_violation "stale-keep-list-entry" "${kfile}" "-" "keep_list file does not exist under steps dir"
         continue
     fi
-    line_for_check="${kline}"
-    case "${kline}" in
-        *-*) line_for_check="${kline%%-*}" ;;
-    esac
-    if [ "${kkind}" = "literal" ]; then
-        actual_line=$(awk -v n="${line_for_check}" 'NR==n' "${abs}")
-        case "${actual_line}" in
-            *"${kterm}"*) ;;
-            *)
-                emit_violation "term-mismatch" "${kfile}" "${kline}" "keep_list term '${kterm}' not present at ${kfile}:${kline}"
-                ;;
-        esac
-    else
-        emit_violation "term-mismatch" "${kfile}" "${kline}" "keep_list match_kind '${kkind}' is not literal (regex unsupported in step-prompt audit)"
+    if [ "${kkind}" != "literal" ]; then
+        emit_violation "stale-keep-list-entry" "${kfile}" "-" "keep_list match_kind '${kkind}' is not literal (regex unsupported in step-prompt audit)"
+        continue
+    fi
+    if ! grep -qF -- "${kterm}" "${abs}"; then
+        emit_violation "stale-keep-list-entry" "${kfile}" "-" "keep_list term '${kterm}' no longer appears anywhere in ${kfile} (stale exemption)"
     fi
 done <<< "${KEEP_TSV}"
 
 # ── Pass 2: banned-term-bleed sweep ──────────────────────────────────────
 echo -e "${YELLOW}[INFO]${NC} Pass 2: banned-term-bleed sweep (${BANNED_COUNT} terms × steps corpus)"
 
-# Build keep_list lookup: file<TAB>line<TAB>term
-KEEP_LOOKUP=$(printf '%s\n' "${KEEP_TSV}" | awk -F'\t' '{print $1"\t"$2"\t"$3}')
+# Build keep_list lookup: file<TAB>term  (OJ-16: file-scoped; no line).
+KEEP_LOOKUP=$(printf '%s\n' "${KEEP_TSV}" | awk -F'\t' '{print $1"\t"$2}')
 
+# Pure (file, term) membership test — file-scoped, no line. An entry
+# exempts the term anywhere in the named file. The term match keeps the
+# existing substring semantics (index): a keep_list term that contains
+# the banned term as a substring exempts it.
 in_keep_list() {
-    local file="$1" line="$2" term="$3"
-    echo "${KEEP_LOOKUP}" | awk -F'\t' -v f="${file}" -v ln="${line}" -v t="${term}" '
+    local file="$1" term="$2"
+    echo "${KEEP_LOOKUP}" | awk -F'\t' -v f="${file}" -v t="${term}" '
         $1 != f { next }
-        index($3, t) == 0 { next }
-        {
-            split($2, parts, "-")
-            if (length(parts[2]) == 0) {
-                if (parts[1]+0 == ln+0) { found=1; exit }
-            } else {
-                if (ln+0 >= parts[1]+0 && ln+0 <= parts[2]+0) { found=1; exit }
-            }
-        }
+        index($2, t) == 0 { next }
+        { found=1; exit }
         END { exit (found ? 0 : 1) }
     '
 }
@@ -222,7 +241,7 @@ while IFS=$'\t' read -r bterm bkind bscope bregions bassertion _extra; do
         # Iterate over every line, flag literal substring hits.
         while IFS=$'\t' read -r hline hcontent; do
             [ -z "${hline}" ] && continue
-            if in_keep_list "${rel_path}" "${hline}" "${bterm}"; then
+            if in_keep_list "${rel_path}" "${bterm}"; then
                 continue
             fi
             emit_violation "banned-term-bleed" "${rel_path}" "${hline}" "banned term '${bterm}' (kind=${bkind}) outside keep_list"
