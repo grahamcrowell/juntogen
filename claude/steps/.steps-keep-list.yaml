@@ -197,83 +197,83 @@ keep_list:
 
   # -- step-06: skill prompts (BL-025-m.2: commands -> skills) --
   - file: "step-06-commands.md"
-    line: 65
+    line: 67
     term: "Task tool"
     match_kind: "literal"
     reason: "convene-fallback-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'Task tool' at step-06-commands.md:65. Context: - Execution-model branches: Simple (inline perspective rotation), Moderate (3-phase Task tool engagement), Complex (parallel team via Con..."
-  - file: "step-06-commands.md"
-    line: 66
-    term: "Task tool"
-    match_kind: "literal"
-    reason: "convene-fallback-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'Task tool' at step-06-commands.md:66. Context: - **Per-spawn `model` directive (Moderate + Complex branches)**: BOTH the Moderate (3-phase) branch and the Complex branch MUST instruct ..."
+    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'Task tool' at step-06-commands.md:67. Context: - Execution-model branches: Simple (inline perspective rotation), Moderate (3-phase Task tool engagement), Complex (parallel team via Con..."
   - file: "step-06-commands.md"
     line: 68
-    term: "TeamCreate"
-    match_kind: "literal"
-    reason: "convene-fallback-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'TeamCreate' at step-06-commands.md:68. Context: - when `.available == true`: proceed with TeamCreate exactly as the existing Complex branch describes."
-  - file: "step-06-commands.md"
-    line: 69
     term: "Task tool"
     match_kind: "literal"
     reason: "convene-fallback-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'Task tool' at step-06-commands.md:69. Context: - when `.available == false`: follow the deputy-coordinator parallel-Consult fan-out pattern documented in `juntospec/D32-execution-model..."
+    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'Task tool' at step-06-commands.md:68. Context: - **Per-spawn `model` directive (Moderate + Complex branches)**: BOTH the Moderate (3-phase) branch and the Complex branch MUST instruct ..."
   - file: "step-06-commands.md"
-    line: 69
+    line: 70
     term: "TeamCreate"
     match_kind: "literal"
     reason: "convene-fallback-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'TeamCreate' at step-06-commands.md:69. Context: - when `.available == false`: follow the deputy-coordinator parallel-Consult fan-out pattern documented in `juntospec/D32-execution-model..."
+    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'TeamCreate' at step-06-commands.md:70. Context: - when `.available == true`: proceed with TeamCreate exactly as the existing Complex branch describes."
   - file: "step-06-commands.md"
-    line: 69
-    term: "SendMessage"
+    line: 71
+    term: "Task tool"
     match_kind: "literal"
     reason: "convene-fallback-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'SendMessage' at step-06-commands.md:69. Context: - when `.available == false`: follow the deputy-coordinator parallel-Consult fan-out pattern documented in `juntospec/D32-execution-model..."
+    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'Task tool' at step-06-commands.md:71. Context: - when `.available == false`: follow the deputy-coordinator parallel-Consult fan-out pattern documented in `juntospec/D32-execution-model..."
   - file: "step-06-commands.md"
     line: 71
     term: "TeamCreate"
     match_kind: "literal"
     reason: "convene-fallback-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'TeamCreate' at step-06-commands.md:71. Context: - **Runtime backstop (probe is a hint, not a guarantee)**: the generated Complex branch MUST further instruct the skill that `agent-teams..."
+    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'TeamCreate' at step-06-commands.md:71. Context: - when `.available == false`: follow the deputy-coordinator parallel-Consult fan-out pattern documented in `juntospec/D32-execution-model..."
   - file: "step-06-commands.md"
     line: 71
     term: "SendMessage"
     match_kind: "literal"
     reason: "convene-fallback-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'SendMessage' at step-06-commands.md:71. Context: - **Runtime backstop (probe is a hint, not a guarantee)**: the generated Complex branch MUST further instruct the skill that `agent-teams..."
+    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'SendMessage' at step-06-commands.md:71. Context: - when `.available == false`: follow the deputy-coordinator parallel-Consult fan-out pattern documented in `juntospec/D32-execution-model..."
   - file: "step-06-commands.md"
-    line: 88
-    term: "SubagentStart"
-    match_kind: "literal"
-    reason: "teardown-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'SubagentStart' at step-06-commands.md:88. Context: description: Diagnose OpenJunto plugin runtime health — verify CONDUCTOR.md injection, oj-helper availability, jq dependency, plugin mani..."
-  - file: "step-06-commands.md"
-    line: 104
-    term: "SubagentStart"
-    match_kind: "literal"
-    reason: "teardown-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'SubagentStart' at step-06-commands.md:104. Context: - Probe 5: SubagentStart hook wiring (`hooks/hooks.json` matcher inspection)"
-  - file: "step-06-commands.md"
-    line: 126
-    term: "Task tool"
-    match_kind: "literal"
-    reason: "convene-fallback-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'Task tool' at step-06-commands.md:126. Context: - Phase 3 — Plan & Execute: Stakeholder engagement plan; execution by tier (Simple inline / Moderate 3-phase / Complex Convene). **Per-sp..."
-  - file: "step-06-commands.md"
-    line: 126
+    line: 73
     term: "TeamCreate"
     match_kind: "literal"
     reason: "convene-fallback-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'TeamCreate' at step-06-commands.md:126. Context: - Phase 3 — Plan & Execute: Stakeholder engagement plan; execution by tier (Simple inline / Moderate 3-phase / Complex Convene). **Per-sp..."
+    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'TeamCreate' at step-06-commands.md:73. Context: - **Runtime backstop (probe is a hint, not a guarantee)**: the generated Complex branch MUST further instruct the skill that `agent-teams..."
   - file: "step-06-commands.md"
-    line: 126
+    line: 73
     term: "SendMessage"
     match_kind: "literal"
     reason: "convene-fallback-binding"
-    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'SendMessage' at step-06-commands.md:126. Context: - Phase 3 — Plan & Execute: Stakeholder engagement plan; execution by tier (Simple inline / Moderate 3-phase / Complex Convene). **Per-sp..."
+    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'SendMessage' at step-06-commands.md:73. Context: - **Runtime backstop (probe is a hint, not a guarantee)**: the generated Complex branch MUST further instruct the skill that `agent-teams..."
+  - file: "step-06-commands.md"
+    line: 90
+    term: "SubagentStart"
+    match_kind: "literal"
+    reason: "teardown-binding"
+    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'SubagentStart' at step-06-commands.md:90. Context: description: Diagnose OpenJunto plugin runtime health — verify CONDUCTOR.md injection, oj-helper availability, jq dependency, plugin mani..."
+  - file: "step-06-commands.md"
+    line: 106
+    term: "SubagentStart"
+    match_kind: "literal"
+    reason: "teardown-binding"
+    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'SubagentStart' at step-06-commands.md:106. Context: - Probe 5: SubagentStart hook wiring (`hooks/hooks.json` matcher inspection)"
+  - file: "step-06-commands.md"
+    line: 128
+    term: "Task tool"
+    match_kind: "literal"
+    reason: "convene-fallback-binding"
+    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'Task tool' at step-06-commands.md:128. Context: - Phase 3 — Plan & Execute: Stakeholder engagement plan; execution by tier (Simple inline / Moderate 3-phase / Complex Convene). **Per-sp..."
+  - file: "step-06-commands.md"
+    line: 128
+    term: "TeamCreate"
+    match_kind: "literal"
+    reason: "convene-fallback-binding"
+    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'TeamCreate' at step-06-commands.md:128. Context: - Phase 3 — Plan & Execute: Stakeholder engagement plan; execution by tier (Simple inline / Moderate 3-phase / Complex Convene). **Per-sp..."
+  - file: "step-06-commands.md"
+    line: 128
+    term: "SendMessage"
+    match_kind: "literal"
+    reason: "convene-fallback-binding"
+    note: "Auto-regenerated (line-shift after 0.1.0 step edits): platform-fact reference to 'SendMessage' at step-06-commands.md:128. Context: - Phase 3 — Plan & Execute: Stakeholder engagement plan; execution by tier (Simple inline / Moderate 3-phase / Complex Convene). **Per-sp..."
 
   # -- step-07: oj-helper inject-profile contract --
   - file: "step-07-helper-script.md"

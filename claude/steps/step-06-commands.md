@@ -18,18 +18,20 @@ Also examine the actual OpenJunto source files for reference. These are the cano
 - `{OJ_SOURCE}/skills/run-task/SKILL.md`     — execute a single backlog item through the 5-phase lifecycle
 - `{OJ_SOURCE}/skills/save-session/SKILL.md` — persist session state before `/clear`
 - `{OJ_SOURCE}/skills/show-backlog/SKILL.md` — display a concise read-only summary of the backlog
+- `{OJ_SOURCE}/skills/spec/SKILL.md`         — front-half authoring (reqs/design/plan/refresh) + backlog graduation
 
 The pre-plugin form of these protocols lived at `~/.claude/commands/*.md` (legacy `run-task.md`, `save-session.md`, `show-backlog.md`). The plugin tree retains the same operational content but reshapes it into the SKILL.md contract documented below. New `cycle` and `health-check` skills have no pre-plugin command equivalent — read the `{OJ_SOURCE}` skill bodies for their canonical content.
 
 ## Task
 
-Generate **5 skill files** in plugin form. The Claude plugin host loads skills from `skills/<name>/SKILL.md` (directory-per-skill, not flat-file). Create each file at the path specified below:
+Generate **6 skill files** in plugin form. The Claude plugin host loads skills from `skills/<name>/SKILL.md` (directory-per-skill, not flat-file). Create each file at the path specified below:
 
 1. `skills/cycle/SKILL.md`        — autonomous backlog cycle skill
 2. `skills/health-check/SKILL.md` — runtime health probe skill
 3. `skills/run-task/SKILL.md`     — single-item task lifecycle skill
 4. `skills/save-session/SKILL.md` — session-state persistence skill
 5. `skills/show-backlog/SKILL.md` — read-only backlog summary skill
+6. `skills/spec/SKILL.md`         — front-half authoring + backlog graduation skill
 
 Each SKILL.md is a markdown instruction set with YAML frontmatter (not an executable script). The plugin host activates a skill when the user invokes its slash-command surface (`/cycle`, `/health-check`, `/run-task`, `/save-session`, `/show-backlog`). Each skill defines a protocol — step-by-step instructions with decision points, constraints, and fallback behaviors that Claude follows when activated.
 
@@ -185,6 +187,37 @@ Constraints: read-only, concise output, empty-backlog handling.
 
 Cross-references use `/run-task` for the full task lifecycle that consumes the backlog and `.claude/CLAUDE.md` for project-specific backlog conventions.
 
+### 6. spec skill — `skills/spec/SKILL.md`
+
+**Purpose**: Author the front-half specification artifacts (requirements → design → implementation-plan) for a Moderate/Complex subject, then **graduate** the plan's tasks into the backlog so `/run-task` and `/cycle` can execute them. Canonical spec: `D56-commands-automation.md` § Spec Authoring Command (front-half) and § Backlog Graduation.
+
+**YAML frontmatter** (verbatim):
+```yaml
+---
+description: Author front-half specs (reqs/design/plan) and graduate plan tasks into the backlog
+disable-model-invocation: true
+---
+```
+
+`spec` is side-effecting (it writes durable spec docs AND mutates the backlog / issue tracker during graduation), so it carries `disable-model-invocation: true` and gets NO `context: fork` or `allowed-tools` — same invocation-control class as `cycle`, `run-task`, and `save-session` (Item 7).
+
+**Body**: Reproduce the protocol structure from `{OJ_SOURCE}/skills/spec/SKILL.md`:
+
+- A one-argument mode selector: `reqs | design | plan | refresh`. Ceremony scales to tier (Trivial none, Simple plan-only, Moderate design+plan, Complex all three), consistent with the CONDUCTOR two-dimensional triage. The `reqs` mode uses the interview-first pattern (`AskUserQuestion`) before drafting; `refresh` re-aligns downstream artifacts and re-runs graduation idempotently.
+- The `reqs`/`design`/`plan` modes author against the step-05 front-half templates — `${CLAUDE_PLUGIN_ROOT}/templates/requirements.md`, `${CLAUDE_PLUGIN_ROOT}/templates/design.md`, `${CLAUDE_PLUGIN_ROOT}/templates/implementation-plan.md` respectively. The templates carry the required sections (stable `FR-N`/`NFR-N`/`T-<subject>-NN` IDs, out-of-scope, per-task `verify:` command, open-questions, live-state reconciliation, graduation record); the skill body references them rather than duplicating the section lists.
+- **Plan-mode graduation (Step G)** — the fully-specified substance; reproduce it verbatim from the baseline and keep it faithful to `D56` § Backlog Graduation. The generated Step G MUST emit:
+  - **G1 backlog-source branch**: `oj-helper issue-tracker-check` → issue-tracker mode, else `oj-helper resolve-path backlog` → file-backed mode (identical detection to `/run-task`, `/show-backlog`).
+  - **G2 priority derivation**: critical-path default (on-path → higher band, off-path → one lower, security/one-way-door → top); an explicit per-task `priority:` field overrides the derived band and breaks ties.
+  - **G3 match**: topological sort by `blockedBy`; match existing items by `Source: <plan-doc>#T-<subject>-NN`; classify create / update / hold (in-progress or done — never modified) / cancel.
+  - **G4 build + validate, NO writes**: build every item in memory (title, acceptance = the task's verification command verbatim, `Blocked By` = graduated predecessor ids, `Source:` back-ref, priority); then validate the whole set (predecessors resolve, no id/`Source:` collision, required fields present). If any task fails validation, ABORT in prepare — write nothing, present nothing.
+  - **G5 whole-set confirmation gate**: present the full create/update/hold/cancel set via `AskUserQuestion`; batch approval only (no per-item); write nothing until approved; nothing written on rejection.
+  - **G6 atomic commit (all-or-none per plan)**: file-backed mode applies all changes to an in-memory copy and writes the whole backlog document in a single replace (temp-file-then-move); issue-tracker mode emulates a transaction — track every key created this invocation, and on ANY create/link failure ROLL BACK (close or delete the created keys, discard staged sidecar entries) leaving the tracker byte-identical to its pre-graduation state; commit the sidecar map `<plan-doc>.map` only after all creates+links succeed.
+  - **G7 backlink the plan** — only after G6 commits; if G6 rolled back, do NOT touch the plan.
+  - **External-id hygiene**: in issue-tracker mode, no `T-<subject>-NN` or local backlog id appears in externally visible tracker fields; the `T ↔ key` correspondence lives only in the local sidecar map `<plan-doc>.map`.
+- Constraints: graduation is idempotent (keyed on `Source:`), all-or-none per plan, gated by explicit confirmation, and warns (does not block) on tasks estimated over ~1.5–2 dev-days.
+
+> The graduation step reads and writes the same backlog surface as `/run-task` and `/cycle`; keep its source-detection and item schema identical so the three skills interoperate. Cross-reference `${CLAUDE_PLUGIN_ROOT}/reference/execution-protocol.md` for tier mechanics and `.claude/CLAUDE.md` for project-specific backlog conventions.
+
 ## Format Requirements
 
 Each SKILL.md must:
@@ -202,18 +235,20 @@ Each SKILL.md must:
 
 After generation, verify each SKILL.md:
 
-1. **Path**: file exists at `skills/<name>/SKILL.md` (directory-per-skill, not flat). All 5 directories present: `skills/cycle/`, `skills/health-check/`, `skills/run-task/`, `skills/save-session/`, `skills/show-backlog/`.
-2. **Frontmatter**: file begins with `---` on line 1, contains a `description:` line, closes with `---` before the body. **Invocation controls (Item 7)**: the side-effecting skills (`cycle`, `run-task`, `save-session`) each carry `disable-model-invocation: true`; the read-only skills (`show-backlog`, `health-check`) each carry `allowed-tools: [Bash, Read, Grep, Glob]` (a read-only set — no write/edit tools) and `context: fork`. The side-effecting skills do NOT get `context: fork` or `allowed-tools`; the read-only skills do NOT get `disable-model-invocation`.
+1. **Path**: file exists at `skills/<name>/SKILL.md` (directory-per-skill, not flat). All 6 directories present: `skills/cycle/`, `skills/health-check/`, `skills/run-task/`, `skills/save-session/`, `skills/show-backlog/`, `skills/spec/`.
+2. **Frontmatter**: file begins with `---` on line 1, contains a `description:` line, closes with `---` before the body. **Invocation controls (Item 7)**: the side-effecting skills (`cycle`, `run-task`, `save-session`, `spec`) each carry `disable-model-invocation: true`; the read-only skills (`show-backlog`, `health-check`) each carry `allowed-tools: [Bash, Read, Grep, Glob]` (a read-only set — no write/edit tools) and `context: fork`. The side-effecting skills do NOT get `context: fork` or `allowed-tools`; the read-only skills do NOT get `disable-model-invocation`.
 3. **Body**: more than 5 lines of markdown content after the frontmatter.
 4. **Phase/step completeness**: each skill reproduces the steps documented in the corresponding `{OJ_SOURCE}/skills/<name>/SKILL.md` baseline.
 5. **Decision logic**: backlog source detection logic appears identical in both /run-task and /show-backlog (both call `oj-helper issue-tracker-check` and parse exit code + JSON `.project` field).
 6. **Format strings**: PERSPECTIVE block format, feedback-file format, and the `HEALTH: OK | DEGRADED — ...` summary line match the baselines verbatim.
 7. **Cross-references**: every `${CLAUDE_PLUGIN_ROOT}/<subdir>/<file>` reference points to a file the plugin tree will actually contain (the structural-diff Layer 4 check resolves these against the live tree).
 8. **No legacy paths**: no `~/.claude/commands/`, no legacy `src/`-rooted output forms (commands previously lived under that wrapper; they now live in plugin-tree-direct `skills/` directories), no nested `agents/compact/` subdirectory, and no `agents/*-compact.md` siblings (compact profiles live at `reference/compact/<name>.md`); no `agents/index.md` reference (use `reference/expert-index.md`).
+9. **Graduation contract (spec skill)**: `skills/spec/SKILL.md` reproduces Step G with the four hard guarantees from `D56` § Backlog Graduation — (a) prepare/validate with NO writes before the confirmation gate; (b) whole-set confirmation gate before any write; (c) all-or-none commit (single-replace write for file-backed; tracked-key rollback for issue-tracker); (d) issue-tracker external-id hygiene (no `T-` / local backlog id in tracker-visible fields; correspondence in `<plan-doc>.map`). Backlog source-detection and item schema match `/run-task` and `/show-backlog` verbatim.
 
 ## Dependencies
 
 - **Step 01** (CONDUCTOR.md) must be complete — defines the slim two-dimensional triage (incl. the Trivial fast-path) and tier overview referenced by each skill body
 - **Step 04** (reference files) must be complete — skills cross-reference `${CLAUDE_PLUGIN_ROOT}/reference/stakeholder-guide.md`, `workflow-stages.md`, and the full execution mechanics / model-selection table in `${CLAUDE_PLUGIN_ROOT}/reference/execution-protocol.md`
-- **Step 05** (templates) must be complete — skills cross-reference `${CLAUDE_PLUGIN_ROOT}/templates/session-state.md`, `retrospective.md`
-- **Step 07** (oj-helper script) must be complete — skills invoke `oj-helper` subcommands (`issue-tracker-check`, `issue-tracker-list`, `issue-tracker-transition`, `feedback-path`, `conductor-inject`)
+- **Step 05** (templates) must be complete — skills cross-reference `${CLAUDE_PLUGIN_ROOT}/templates/session-state.md`, `retrospective.md`; the `spec` skill additionally references the front-half templates `${CLAUDE_PLUGIN_ROOT}/templates/{requirements,design,implementation-plan}.md`
+- **Step 07** (oj-helper script) must be complete — skills invoke `oj-helper` subcommands (`issue-tracker-check`, `issue-tracker-list`, `issue-tracker-transition`, `feedback-path`, `conductor-inject`); the `spec` skill additionally invokes `resolve-path backlog`, `issue-tracker-create`, and `issue-tracker-link-list` during graduation
+- **D56** § Spec Authoring Command (front-half) + § Backlog Graduation — canonical source for the `spec` skill's modes and the Step G graduation protocol (identity/back-reference, field mapping, priority derivation, dependency translation, idempotent upsert, atomicity, external-id hygiene, confirmation/decomposition)

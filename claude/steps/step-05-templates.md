@@ -4,8 +4,8 @@
 
 Read these specification files before generating:
 
-1. **Primary spec**: `D48-reference-system.md` § Template Inventory — defines the 5 templates, when to use each, and essential sections
-2. **Supporting context**: Review Template Evolution and Template Selection notes in spec D48
+1. **Primary spec**: `D48-reference-system.md` § Template Inventory — defines the 8 templates, when to use each, and essential sections
+2. **Supporting context**: Review Template Evolution and Template Selection notes in spec D48. The three front-half templates (requirements/design/implementation-plan) are consumed by the spec skill (`D56-commands-automation.md` § Spec Authoring Command); `implementation-plan.md` carries the `T-<subject>-NN` task shape that `D56` § Backlog Graduation reads.
 
 Also examine the actual OpenJunto source files for reference:
 - `templates/technical-analysis.md`
@@ -13,16 +13,22 @@ Also examine the actual OpenJunto source files for reference:
 - `templates/retrospective.md`
 - `templates/session-state.md`
 - `templates/communications-playbook.md`
+- `templates/requirements.md`
+- `templates/design.md`
+- `templates/implementation-plan.md`
 
 ## Task
 
-Generate **5 deliverable templates** in markdown format. Create each file at the path specified:
+Generate **8 deliverable templates** in markdown format. Create each file at the path specified:
 
 1. `templates/technical-analysis.md`
 2. `templates/architecture-decision-record.md`
 3. `templates/retrospective.md`
 4. `templates/session-state.md`
 5. `templates/communications-playbook.md`
+6. `templates/requirements.md`
+7. `templates/design.md`
+8. `templates/implementation-plan.md`
 
 Each template is a structured format for a common deliverable type. Templates are starting points — projects copy to `.claude/` and customize as needed.
 
@@ -140,6 +146,60 @@ Each template is a structured format for a common deliverable type. Templates ar
 - Signal gate is the most critical section — emphasize event-driven vs time-driven
 - Hierarchy rule prevents duplication noise
 
+### 6. requirements.md
+
+**When to use**: Front-half authoring, spec `reqs` mode. Complex-tier subjects; interview-first (resolve open questions via `AskUserQuestion` before drafting the design).
+
+**Essential sections**:
+1. **Header**: blockquote with Tier, Author, Date, Status
+2. **Summary**: 1-3 sentences (what this delivers and why)
+3. **Functional Requirements**: stable `FR-N` bullet IDs — never renumber; referenced by the design doc and by plan tasks
+4. **Non-Functional Requirements**: stable `NFR-N` IDs, with measurable targets where possible
+5. **Out of Scope**: explicit exclusions
+6. **Open Questions**: checkbox list with owner/decision; resolved by interview before the design is built on assumptions
+7. **End-to-End Verification**: the single check that proves the finished feature works (feeds the plan's per-task verification commands)
+8. **Metadata**: Author, Reviewer(s), Related links
+
+**Format notes**:
+- Stable IDs are load-bearing (graduation + cross-reference); emphasize "never renumber"
+- Placeholders in `{BRACES}`; instructional `<!-- HTML comments -->`
+
+### 7. design.md
+
+**When to use**: Front-half authoring, spec `design` mode. Moderate/Complex; architecture derived from requirements (Complex) or design-first (Moderate).
+
+**Essential sections**:
+1. **Header**: blockquote with Tier, Author, Date, Requirements link
+2. **Summary**: 2-3 sentences
+3. **Requirements Satisfied**: trace each design element to the `FR-N`/`NFR-N` it satisfies; flag any requirement the design cannot meet back to reqs
+4. **Architecture**: name concrete files/modules, interfaces/contracts, data/state; optional mermaid diagram
+5. **Key Decisions**: table — Decision | Chosen | Alternatives rejected | Why
+6. **Out of Scope**: exclusions
+7. **Open Questions**: checkbox list
+8. **Verification Approach**: how the implemented design is proven (source for the plan's per-task verify commands)
+
+**Format notes**:
+- Self-contained: a cold session must be able to act from the Architecture section
+- Use a mermaid code block for the diagram; `{BRACES}` placeholders
+
+### 8. implementation-plan.md
+
+**When to use**: Front-half authoring, spec `plan` mode. Simple and above; decompose the design into review-sized tasks, then graduate to the backlog (Step G).
+
+**Essential sections**:
+1. **Header**: blockquote with Tier, Author, Date, Design link
+2. **Summary**: 2-3 sentences
+3. **Tasks**: `### T-<subject>-NN` entries — stable IDs (never renumber; they are the graduation keys). Each task carries `blockedBy`, `verify` (exact executable definition-of-done command), `size`, optional `priority`, one-line scope
+4. **Critical Path**: ordered T-IDs — drives the derived priority band at graduation
+5. **Risk Register**: table — Risk | Likelihood | Impact | Mitigation
+6. **Live-State Reconciliation**: checkbox to re-verify cited PRs/live state at each task kickoff
+7. **Graduation Record**: table — Task | Backlog id | Status — bidirectional `T <-> backlog id` link written by Step G; re-graduation (refresh) syncs it by `Source:` back-ref
+
+**Format notes**:
+- Every task MUST carry a `verify:` command (the definition-of-done); this is the single highest-leverage field
+- Warn/split tasks over ~1.5-2 dev-days so each maps to one PR
+- Task IDs and the Graduation Record are the wiring into `D56` § Backlog Graduation — keep the shape exact
+
 ## Format Requirements
 
 Each template must:
@@ -163,3 +223,6 @@ After generation, verify each template:
 
 - **Step 01** (CLAUDE.md) must be complete — defines when templates are used (e.g., retrospective required for Complex tier)
 - **Step 04** (reference files) must be complete — templates are referenced in workflow-stages.md and project-scaffolding.md
+
+Consumers:
+- **Step 06** (skills) consumes the three front-half templates — the spec skill's `reqs`/`design`/`plan` modes reference `${CLAUDE_PLUGIN_ROOT}/templates/{requirements,design,implementation-plan}.md`, and `implementation-plan.md`'s `T-<subject>-NN` task shape is what Backlog Graduation (Step G) reads.
