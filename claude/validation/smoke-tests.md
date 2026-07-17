@@ -493,23 +493,23 @@ cat /tmp/banner.err   # → OpenJunto v<version> active — OpenJunto coordinati
 
 **Steps**:
 1. Submit request requiring multiple sub-agent spawns of varying complexity:
-   - Routine doc update (haiku candidate)
-   - Implementation with clear spec (sonnet candidate)
-   - Novel architectural decision (opus candidate)
+   - Routine doc update (sonnet candidate)
+   - Implementation with clear spec (opus[1m] candidate)
+   - Novel architectural decision (fable candidate)
 2. Observe Task tool spawn parameters
 
 **Expected Results**:
 
 **Model Parameter Usage**:
 - [ ] Manager sets `model` parameter on Task tool spawns
-- [ ] Routine task: `model: "haiku"`
-- [ ] Implementation task: `model: "sonnet"`
-- [ ] Architectural task: `model: "opus"`
-- [ ] If uncertain, manager uses more capable model (sonnet > haiku, opus > sonnet)
+- [ ] Routine task: `model: "sonnet"`
+- [ ] Implementation task: `model: "opus[1m]"`
+- [ ] Architectural task: `model: "fable"`
+- [ ] If uncertain, manager uses more capable model (opus[1m] > sonnet, fable > opus[1m])
 
 **Sub-Agent Behavior**:
 - [ ] Sub-agents execute with assigned model (verify via output characteristics or explicit model mention)
-- [ ] Task quality matches model capability (haiku for simple, opus for complex)
+- [ ] Task quality matches model capability (sonnet for simple, fable for complex)
 
 **Pass Criteria**: Manager selects appropriate model for each task, uses more capable model when uncertain, tasks complete successfully.
 

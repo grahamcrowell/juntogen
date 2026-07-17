@@ -110,7 +110,7 @@ cat steps/step-00-platform-ingestion.md
 # 4. Verify
 # - platform-snapshot.yaml exists
 # - _meta.mode is "declaration" or "defaults"
-# - models section has haiku/sonnet/opus with api_id fields
+# - models section has sonnet/opus[1m]/fable with api_id fields
 # - Step 01 can now consume models from snapshot
 ```
 

@@ -101,7 +101,7 @@ Per-component verification criteria for an OpenJunto system generated from the j
 - [ ] Fallback instructions present with self-loading pattern
 - [ ] Expert orientation requirement present (3 role types: Analyst, Implementer, Reviewer)
 - [ ] `### Model Selection` subsection present
-- [ ] Model table has exactly 3 rows (haiku, sonnet, opus) with When to Use and Examples
+- [ ] Model table has exactly 3 rows (sonnet, opus[1m], fable) with When to Use and Examples
 
 ### Stakeholder Perspectives Section
 - [ ] Mandatory pair listed: `Product Manager` and `Distinguished Engineer` with filenames
@@ -571,9 +571,9 @@ Count verification:
 - [ ] Scoring rule verbatim: `0-1 = Simple (inline), 2-3 = Moderate (Task tool), 4 = Complex (Team/Swarm)`
 
 ### Model Selection Table
-- [ ] Exactly 3 rows: haiku, sonnet, opus
+- [ ] Exactly 3 rows: sonnet, opus[1m], fable
 - [ ] Column headers: Model, When to Use, Examples
-- [ ] Guidance: "When in doubt, use the more capable model (haiku < sonnet < opus)."
+- [ ] Guidance: "When in doubt, use the more capable model (sonnet < opus[1m] < fable)."
 
 ---
 

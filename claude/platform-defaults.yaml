@@ -11,17 +11,18 @@
 # NAMING: The platform tool "Agent" is referred to as "Task tool" in spec vocabulary
 # (D08–D80). See M16-derivation-architecture.md §3 for the mapping note.
 #
-# MODEL IDs: api_id strings are Anthropic's canonical identifiers. Haiku includes a
-# date suffix (`claude-haiku-4-5-20251001`) per Anthropic's current naming;
-# Sonnet/Opus/Fable do not. The `opus[1m]` symbolic id carries Claude Code's 1M-context
-# selector; its api_id is the bare `claude-opus-4-8`. This reflects upstream convention,
-# not internal inconsistency.
+# MODEL IDs: api_id strings are the values Claude Code accepts for the model
+# parameter / settings.json. `claude-sonnet-5` is Anthropic's canonical
+# identifier for Claude Sonnet 5 (short alias: `sonnet`); `claude-opus-4-8[1m]`
+# is the 1M-context alias form of claude-opus-4-8 (short alias: `opus[1m]`);
+# `claude-fable-5` is Anthropic's canonical identifier for Claude Fable 5
+# (short alias: `fable`).
 #
 # See: M16-derivation-architecture.md §3 for schema definition and field semantics.
 
-version: "1.1.0"
-version_date: "2026-07-17"
-description: "Claude Code platform defaults — claude-fable-5 / claude-opus-4-8 / claude-sonnet-5 / claude-haiku-4-5 generation"
+version: "2.1.0"
+version_date: "2026-07-08"
+description: "Claude Code platform defaults — claude-fable-5 / claude-opus-4-8[1m] / claude-sonnet-5 generation, high effort"
 
 platform:
   tools:
@@ -123,32 +124,32 @@ platform:
   models:
     # Symbolic id: used in derivation chains and human-readable references
     # api_id: actual string for Claude Code model parameter and settings.json
-    # cost_ratio: relative input token cost, opus[1m] (implementation tier) = 1.0 baseline
-    #             (mirrors reference/execution-protocol.md Model Selection table)
-    - id: "haiku"
-      api_id: "claude-haiku-4-5-20251001"
-      tier: "routine"           # available; selection routes routine-tier work to sonnet — haiku is the lighter-weight fallback
-      context_window: 200000    # confirmed: Anthropic docs — 200K context
-      max_output_tokens: 64000
-      cost_ratio: 0.2           # $1 input / $5 opus baseline
+    # cost_ratio: relative input token cost, opus[1m] = 1.0 baseline
+    #   (Sonnet 5 $3/MTok, Opus 4.8 $5/MTok, Fable 5 $10/MTok input;
+    #    Sonnet 5 intro pricing $2/MTok through 2026-08-31)
+    # effort: target effort for spawns on this model (applied session-level;
+    #   the Task tool exposes no per-spawn effort knob — see CONDUCTOR.md § Effort)
     - id: "sonnet"
       api_id: "claude-sonnet-5"
-      tier: "routine"
-      context_window: 1000000   # confirmed: Anthropic docs (2026-07-17) — 1M context
+      tier: "routine"                 # stakeholder analysis, compact lenses, mechanical checks
+      context_window: 1000000
       max_output_tokens: 128000
-      cost_ratio: 0.6           # $3 input / $5 opus baseline
+      cost_ratio: 0.6
+      effort: "high"
     - id: "opus[1m]"
-      api_id: "claude-opus-4-8"
+      api_id: "claude-opus-4-8[1m]"   # Claude Code 1M-context alias of claude-opus-4-8
       tier: "implementation"
-      context_window: 1000000   # confirmed: Anthropic docs (2026-07-17) — 1M context (default)
+      context_window: 1000000
       max_output_tokens: 128000
-      cost_ratio: 1.0           # baseline ($5 input)
+      cost_ratio: 1.0
+      effort: "high"
     - id: "fable"
       api_id: "claude-fable-5"
       tier: "reasoning"
-      context_window: 1000000   # confirmed: Anthropic docs (2026-07-17) — 1M context
+      context_window: 1000000
       max_output_tokens: 128000
-      cost_ratio: 2.0           # $10 input / $5 opus baseline
+      cost_ratio: 2.0
+      effort: "high"
 
   hooks:
     - point: "SubagentStart"

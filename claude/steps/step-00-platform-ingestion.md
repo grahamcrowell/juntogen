@@ -139,30 +139,27 @@ platform:
       available: conditional   # available in direct sessions; not in team sub-agent context
       parameters: ["questions", "answers", "annotations", "metadata"]  # confirmed: ToolSearch schema (2026-04-08); primary param is "questions" (array of question objects)
   models:
-    - id: "haiku"
-      api_id: "claude-haiku-4-5-20251001"   # actual API model string
-      tier: "routine"
-      context_window: 200000
-      max_output_tokens: 64000
-      cost_ratio: 0.2   # relative input token cost; opus[1m] = 1.0 baseline
     - id: "sonnet"
       api_id: "claude-sonnet-5"
       tier: "routine"
       context_window: 1000000
       max_output_tokens: 128000
-      cost_ratio: 0.6
+      cost_ratio: 0.6   # relative input token cost; opus[1m] = 1.0 baseline
+      effort: "high"
     - id: "opus[1m]"
-      api_id: "claude-opus-4-8"
+      api_id: "claude-opus-4-8[1m]"
       tier: "implementation"
       context_window: 1000000
       max_output_tokens: 128000
       cost_ratio: 1.0   # baseline
+      effort: "high"
     - id: "fable"
       api_id: "claude-fable-5"
       tier: "reasoning"
       context_window: 1000000   # confirmed: system prompt states "1M context"
       max_output_tokens: 128000
       cost_ratio: 2.0
+      effort: "high"
   hooks:
     - point: "SubagentStart"
       capabilities: ["modify_prompt", "add_context"]
@@ -279,8 +276,8 @@ After producing `platform-snapshot.yaml`, verify:
 ### Schema Completeness
 - [ ] `platform.tools` section present with at least 20 tool entries
 - [ ] Each tool entry has `name`, `available`, and `parameters` fields
-- [ ] `platform.models` section present with exactly 3 entries (haiku, sonnet, opus)
-- [ ] Each model entry has `id`, `api_id`, `tier`, `context_window`, `max_output_tokens`, and `cost_ratio` fields
+- [ ] `platform.models` section present with exactly 3 entries (sonnet, opus[1m], fable)
+- [ ] Each model entry has `id`, `api_id`, `tier`, `context_window`, `max_output_tokens`, `cost_ratio`, and `effort` fields
 - [ ] `api_id` fields contain actual API model strings (not symbolic ids)
 - [ ] `platform.hooks` section present with SubagentStart and SessionStart entries
 - [ ] Each hook entry has `point`, `capabilities`, and `matchers` fields
