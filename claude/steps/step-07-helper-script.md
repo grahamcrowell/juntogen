@@ -11,6 +11,8 @@ Read these specification files before generating:
 
 Also examine the actual OpenJunto source file for reference:
 - `bin/oj-helper` (first 300 lines showing structure, inject-profile, issue-tracker-check, issue-tracker-list)
+- `bin/oj-helper` — the `workstream-new` block (the `# workstream-new` banner comment through `cmd_workstream_new`, plus the `_workstream_resolve_workspace` / `_workstream_link_one` / `_workstream_link_all` helper functions it depends on); this subcommand lives well past the first 300 lines, so read it explicitly when generating § 13
+- `bin/oj-helper` — the `resolve-path` block (the `# resolve-path` banner comment through `cmd_resolve_path`); like `workstream-new`, this subcommand lives well past the first 300 lines, so read it explicitly when generating § 15 (its banner comment fully documents the keys, layout, and per-key override mechanism). The `install-hooks` block (`cmd_install_hooks`) sits just after `feedback-path` and is likewise past the first 300 lines, so read it explicitly when generating § 14
 
 ### Platform Snapshot (from Step 00)
 - `platform-snapshot.yaml` — Layer 0 platform capability snapshot. Consume one section:
@@ -70,9 +72,9 @@ die()   { echo "ERROR: $*" >&2; exit 1; }
 
 ### Subcommand Functions
 
-Implement these subcommands (in order). The list below enumerates ALL 12 subcommands; the generated `oj-helper` MUST implement every one. Each subcommand listed here corresponds to exactly one `^cmd_NAME(` function definition AND one case-branch in the dispatcher. The static-emitted `hooks/hooks.json` wires three of these (`inject-profile`, `conductor-inject`, `migrate-legacy`) as hook commands — if any of the three is missing from the generated helper, SessionStart/SubagentStart hooks will fire and exit with "Unknown subcommand", silently breaking the plugin at runtime.
+Implement these subcommands (in order). The list below enumerates ALL 15 subcommands; the generated `oj-helper` MUST implement every one. Each subcommand listed here corresponds to exactly one `^cmd_NAME(` function definition AND one case-branch in the dispatcher. The static-emitted `hooks/hooks.json` wires three of these (`inject-profile`, `conductor-inject`, `migrate-legacy`) as hook commands — if any of the three is missing from the generated helper, SessionStart/SubagentStart hooks will fire and exit with "Unknown subcommand", silently breaking the plugin at runtime.
 
-**MANDATORY enumeration (12 functions)**:
+**MANDATORY enumeration (15 specced functions)**:
 
 1. `cmd_inject_profile`         — SubagentStart hook (§1)
 2. `cmd_conductor_inject`       — SessionStart hook (§2)
@@ -86,6 +88,11 @@ Implement these subcommands (in order). The list below enumerates ALL 12 subcomm
 10. `cmd_issue_tracker_comment` — comment on issue (§10)
 11. `cmd_issue_tracker_link_list` — list cross-references (§11)
 12. `cmd_agent_teams_check`     — agent-teams capability probe (§12)
+13. `cmd_workstream_new`        — scaffold a parallel-workstream directory (§13)
+14. `cmd_install_hooks`         — opt-in .githooks installer (§14)
+15. `cmd_resolve_path`          — canonical state-path resolver (§15)
+
+> **Enumeration is exact again.** All 15 shipped `^cmd_` subcommands are now specced here - `install-hooks` and `resolve-path` were promoted from hand-cuts into §14 and §15, closing the former enumeration gap. The generated helper therefore contains exactly 15 `^cmd_` functions, so `grep -cE "^cmd_" bin/oj-helper` MUST return `15`; the exact-count invariant is valid again. A regen MUST implement every one; none may be dropped to hit a count.
 
 #### 1. inject-profile — SubagentStart Hook
 
@@ -363,6 +370,62 @@ cmd_agent_teams_check() {
 
 **Why this matters**: Without an explicit probe, skills would have to inspect the env var themselves (duplicated logic across `/oj:cycle` and `/oj:run-task`) or assume Convene is available (the bug this subcommand exists to fix). Centralizing the check here makes the availability rule a single grep target and lets future host-feature detection (e.g., a `claude config get` form) replace the env-var heuristic without touching every skill.
 
+#### 13. workstream-new — Scaffold a Parallel-Workstream Directory
+
+**Purpose**: Scaffold `<workspace>/.workstreams/<wsid>/` for running an isolated `/oj:cycle` thread that SHARES the workspace's canonical `.claude/` state (BACKLOG.md, session, artifacts) with other concurrent workstreams. Consumed by the `workstream-new` skill (step-06 § 8) and specced platform-neutrally in `D56-commands-automation.md` § Workstream Scaffolding Command.
+
+**Invocation**: `oj-helper workstream-new <wsid> <repo> [branch] [--workspace <path>]`
+
+**Reference implementation**: the `workstream-new` block in `bin/oj-helper` (the `# workstream-new` banner through `cmd_workstream_new`, plus `_workstream_resolve_workspace` / `_workstream_link_one` / `_workstream_link_all`). Reproduce it faithfully.
+
+**Critical implementation details**:
+
+1. **Argument parsing**: positional `WSID` (required) and `REPO` (required), optional positional `BRANCH` (default `<wsid>`), and flag `--workspace <path>`. `die` (usage) on a missing WSID/REPO, an unknown `--flag`, or an unexpected extra positional.
+2. **Workspace resolution** (helper `_workstream_resolve_workspace`, in order): (a) explicit `--workspace <path>` (must exist); (b) `$OJ_STATE_ROOT` env var as the workspace root, tolerating and stripping a trailing `/.claude/local` or `/.claude` suffix, when `<root>/.claude/state/session.md` exists (lets a SessionStart hook pin the canonical workspace regardless of `$PWD`); (c) `$PWD` if `$PWD/.claude/state/session.md` exists; (d) walk up from `$PWD` to the first ancestor containing `.claude/state/session.md`. `die` with an actionable message if none resolves.
+3. **Repo validation**: `die` if `<workspace>/<repo>` is not a directory or is not a git repo (`.git` absent).
+4. **Scaffold**: create `<workspace>/.workstreams/<wsid>/.claude/`; symlink the canonical shared-state paths into it (`state/session.md` required, `BACKLOG.md` required, `artifacts` optional) via a link helper that backs up any pre-existing real file with a timestamp suffix before replacing it with a symlink, and is idempotent (a correct existing symlink is left as "already linked"); create a git worktree of `<repo>` at `./<repo>` on `<branch>`; and write a real (never-overwritten) per-workstream `.claude/CLAUDE.md` carrying the `[ws: <wsid>]` tagging directive and the don't-touch-other-workstreams rule.
+5. **Idempotent**: re-running yields the same end state. `.claude/CLAUDE.md` is never overwritten; existing real state files are backed up before being linked.
+6. **Output**: a human-readable summary plus a `Next steps:` block (the `cd` / `claude` / `/rename` / `/oj:cycle` lines the skill surfaces verbatim). **Exit codes**: `0` created-or-already-present; `1` driver error (workspace unresolved, repo missing); `2` usage error.
+
+**Why this matters**: the `workstream-new` skill's entire filesystem contract lives here — worktree creation, shared-state symlinking, and the tagging overlay that makes concurrent `/oj:cycle` threads safe against one shared backlog. A regen that omits this subcommand leaves the generated `workstream-new` skill calling a dispatcher branch that `die`s with "Unknown subcommand".
+
+#### 14. install-hooks — Opt-In `.githooks` Installer
+
+**Purpose**: Set `git config core.hooksPath .githooks` in the current repo so the repo's `.githooks/` gate (e.g. the commit-msg hook that enforces the Regen-Source trailer on snapshot-tracked edits) takes effect. Opt-in by design (a BL-025-m.5 PM constraint): auto-installing hooks at plugin-install time would be an onboarding speedbump for adopters whose workflow does not include regen.
+
+**Invocation**: `oj-helper install-hooks` (no arguments; run from inside the target repo)
+
+**Reference implementation**: the `install-hooks` block in `bin/oj-helper` (the `# install-hooks` banner comment through `cmd_install_hooks`). Reproduce it faithfully.
+
+**Critical implementation details**:
+
+1. **Git-work-tree guard**: verify `$PWD` is inside a git working tree via `git rev-parse --is-inside-work-tree` (suppress its stderr); `die` with an actionable message if not.
+2. **Resolve top-level**: `git rev-parse --show-toplevel` gives the repo root; `die` if it cannot be resolved. `core.hooksPath` is repo-local (lives in `.git/config`); the canonical value `.githooks` is relative so the hook directory travels with the working tree.
+3. **Require the hooks directory**: `die` if `<toplevel>/.githooks` does not exist.
+4. **Require at least one executable hook**: count files under `.githooks/` that are both regular files and executable (`-f && -x`); `die` if the count is zero, so an empty `.githooks/` never silently appears "installed".
+5. **Apply the config, repo-scoped only**: `git config core.hooksPath .githooks` writes to the current repo's `.git/config` only - never `--global`, never any other working tree. Idempotent: git overwrites any existing value, so re-running yields the same end state.
+6. **Summary + exit codes**: on success print exactly `Installed: core.hooksPath -> .githooks (N hook(s) active)` to stdout. Exit 0 when installed or already installed (the summary prints either way); exit 1 (via `die`) on any driver error - not a git repo, `.githooks` missing, or no executable hooks.
+
+**Why this matters**: the `.githooks/` commit-msg gate is what keeps snapshot-tracked edits carrying their Regen-Source trailer. Making installation opt-in and repo-scoped (rather than global or auto-install) honors the BL-025-m.5 PM constraint; a regen that dropped this subcommand would leave contributors with no supported way to arm the gate short of hand-running `git config`.
+
+#### 15. resolve-path — Canonical State-Path Resolver
+
+**Purpose**: Echo the absolute path OpenJunto should use for a canonical state file or directory, honoring per-project layout and overrides. The skills (save-session, show-backlog, run-task, cycle) and the CONDUCTOR templates historically hardcoded `.claude/state/session.md`, `.claude/BACKLOG.md`, and `.claude/artifacts/`; a project that relocated state (via `.claude/oj-paths.env`) had no way to redirect OpenJunto without forking every skill. resolve-path centralizes the decision: a skill asks for a key, oj-helper returns the path.
+
+**Invocation**: `oj-helper resolve-path <key> [--workspace PATH]`, where `<key>` is one of `session | backlog | artifacts | state-dir | config | retros`.
+
+**Reference implementation**: the `resolve-path` block in `bin/oj-helper` (the `# resolve-path` banner comment through `cmd_resolve_path`). This subcommand lives well past the first 300 lines, so read it explicitly when generating this section; its banner comment fully documents the keys, layout, and override mechanism.
+
+**Critical implementation details**:
+
+1. **Argument parsing**: one positional `<key>` (required) and an optional `--workspace <path>` flag. `die` on a missing key, an unknown `--flag`, or an unexpected extra positional.
+2. **Workspace-root resolution** (root = the directory that contains `.claude/`), in order: (1) `--workspace PATH` (must exist - `die` if not); (2) `$OJ_STATE_ROOT` (set by a SessionStart hook) as the root directly, tolerating and stripping a trailing `/.claude/local` or `/.claude` suffix for compatibility with older hooks, when the stripped directory exists; (3) the nearest ancestor of `$PWD` (including `$PWD`) containing a `.claude/` directory; (4) `$PWD` as the final fallback (the ancestor walk always resolves to something, so this path never `die`s on an unresolvable workspace).
+3. **Per-key defaults** (workspace-relative; oj state lives directly under `.claude/` - there is no `.claude/local/` layout): `session` -> `.claude/state/session.md`, `backlog` -> `.claude/BACKLOG.md`, `artifacts` -> `.claude/artifacts`, `state-dir` -> `.claude/state`, `config` -> `.claude`, `retros` -> `.claude/archive/retros`. `die` on an unknown key.
+4. **Per-key override**: `<root>/.claude/oj-paths.env` may set `key=workspace-relative-path` (with `#` comments and surrounding whitespace allowed); an override wins over the default for that key. Take the last matching assignment; an override value that is itself absolute is honored as-is.
+5. **Emit and exit**: print exactly one absolute path on stdout (`$root/$rel`, or `$rel` unchanged when the resolved value is already absolute). The path is NOT created - resolve-path is pure resolution, safe to call before the file exists. Exit 0 on success; exit 1 (via `die`) on a bad key or an unresolvable workspace (in practice, only a `--workspace` path that does not exist).
+
+**Why this matters**: resolve-path is on the hot path for the state-touching skills - cycle, run-task, save-session, spec, and backlog-compact all call it instead of hardcoding `.claude/...` paths, so a project can relocate its state via `.claude/oj-paths.env` without any skill being forked. A regen that omitted this subcommand would leave those skills resolving nothing (or reverting to stale hardcoded paths), silently breaking per-project state layout.
+
 ### Dispatcher
 
 At the end of the script, implement the dispatcher:
@@ -377,6 +440,8 @@ case "${1:-}" in
   conductor-inject)    shift; cmd_conductor_inject "$@" ;;
   migrate-legacy)      shift; cmd_migrate_legacy "$@" ;;
   feedback-path)       shift; cmd_feedback_path "$@" ;;
+  resolve-path)        shift; cmd_resolve_path "$@" ;;
+  install-hooks)       shift; cmd_install_hooks "$@" ;;
   issue-tracker-check)       shift; cmd_issue_tracker_check "$@" ;;
   issue-tracker-list)        shift; cmd_issue_tracker_list "$@" ;;
   issue-tracker-create)      shift; cmd_issue_tracker_create "$@" ;;
@@ -385,6 +450,7 @@ case "${1:-}" in
   issue-tracker-comment)     shift; cmd_issue_tracker_comment "$@" ;;
   issue-tracker-link-list)   shift; cmd_issue_tracker_link_list "$@" ;;
   agent-teams-check)         shift; cmd_agent_teams_check "$@" ;;
+  workstream-new)            shift; cmd_workstream_new "$@" ;;
   help|--help|-h|"")
     cat <<'EOF'
 oj-helper — dispatcher for OpenJunto utility subcommands
@@ -397,6 +463,8 @@ SUBCOMMANDS:
   conductor-inject     Inject CONDUCTOR.md at session start (SessionStart hook)
   migrate-legacy       Detect Makefile-era install and write migration sentinels
   feedback-path        Output feedback file path for dev mode (OJ_DEVMODE=1)
+  resolve-path         Echo the canonical path for a state key (session|backlog|artifacts|state-dir|config|retros)
+  install-hooks        Set core.hooksPath to .githooks in current repo (opt-in)
 
   issue-tracker-check        Validate issue tracker prerequisites and discover project
   issue-tracker-list         List open issues
@@ -407,6 +475,8 @@ SUBCOMMANDS:
   issue-tracker-link-list    List cross-references for an issue
 
   agent-teams-check          Probe agent-teams capability (Convene substrate); always exits 0
+
+  workstream-new             Scaffold a parallel-workstream directory (git worktree + linked shared .claude/ state)
 
   help                 Show this help message
 
@@ -448,10 +518,13 @@ After generation, verify the script:
 1. **Shebang**: Present and correct (`#!/usr/bin/env bash`)
 2. **Core conventions**: `set -euo pipefail`, `debug()`, `die()` functions present
 3. **Contracts sourced**: header contains `source "${_OJ_SCRIPT_DIR}/lib/contracts.sh"` (die-on-fail). Verify with: `grep -E "source.*contracts\.sh" bin/oj-helper` → ≥1 hit.
-4. **All 12 subcommand functions present**: verify with `grep -cE "^cmd_" bin/oj-helper` → MUST return `12`. Spot-check the two most easily missed:
+4. **All 15 specced subcommand functions present (exact count restored)**: each of the 15 functions in the MANDATORY enumeration MUST be present, and the count is now exact again - every shipped `^cmd_` subcommand is specced, so `grep -cE "^cmd_" bin/oj-helper` MUST return exactly `15` (a regen that adds a new `cmd_` or drops one of the 15 fails this check). Keep the name-based spot-checks for the easily-missed:
    - `grep -E "^cmd_conductor_inject\(\)" bin/oj-helper` → 1 hit
    - `grep -E "^cmd_migrate_legacy\(\)" bin/oj-helper` → 1 hit
    - `grep -E "^cmd_agent_teams_check\(\)" bin/oj-helper` → 1 hit (Convene-fallback probe; missing → Complex tier breaks when env var is unset)
+   - `grep -E "^cmd_workstream_new\(\)" bin/oj-helper` → 1 hit (parallel-workstream scaffolding; missing → the workstream-new skill's dispatcher branch dies with "Unknown subcommand")
+   - `grep -E "^cmd_install_hooks\(\)" bin/oj-helper` → 1 hit (opt-in .githooks installer)
+   - `grep -E "^cmd_resolve_path\(\)" bin/oj-helper` → 1 hit (canonical state-path resolver; hot path for cycle / run-task / save-session / spec / backlog-compact, so a missing branch silently breaks per-project state layout)
 5. **Pinned-string reference**: `grep "OJ_STDERR_CONDUCTOR_MISSING" bin/oj-helper` → ≥1 hit (used in `cmd_conductor_inject`).
 5a. **Version banner**: `cmd_conductor_inject` emits `OpenJunto v<version> active — OpenJunto coordination system` to stderr on every path, sourcing the version from `_oj_plugin_version`. Verify the banner string and that it is stderr-only:
    - `grep -F 'active — OpenJunto coordination system' bin/oj-helper` → ≥1 hit
@@ -464,7 +537,7 @@ After generation, verify the script:
 8b. **Frontmatter stripping (Item 4)**: inject-profile strips the leading two-field YAML frontmatter block from the full profile before building `additionalContext` (frontmatter starting on line 1 only; body horizontal rules survive). Runtime: injecting a full profile does NOT leak a `name:`/`description:` frontmatter block into `additionalContext`.
 9. **JSON output**: issue-tracker-check, issue-tracker-list, conductor-inject output valid JSON
 10. **Debug output**: debug() calls use descriptive messages, write to stderr
-11. **Dispatcher**: Complete case statement listing ALL 12 subcommands + the `help` branch. Every `command` field in the static-emitted `hooks/hooks.json` (`conductor-inject`, `migrate-legacy`, `inject-profile`) MUST have a corresponding case-branch in the dispatcher. A regression-class check: for every `oj-helper <name>` invocation in `hooks/hooks.json`, `bin/oj-helper` MUST contain both a case-branch `<name>)` AND a function `cmd_<name_underscored>(`.
+11. **Dispatcher**: Complete case statement listing ALL 15 specced subcommands + the `help` branch. Every `command` field in the static-emitted `hooks/hooks.json` (`conductor-inject`, `migrate-legacy`, `inject-profile`) MUST have a corresponding case-branch in the dispatcher. A regression-class check: for every `oj-helper <name>` invocation in `hooks/hooks.json`, `bin/oj-helper` MUST contain both a case-branch `<name>)` AND a function `cmd_<name_underscored>(`.
 12. **Syntax-clean**: `bash -n bin/oj-helper` → exit 0.
 13. **Executable**: Script is executable (`chmod +x`)
 

@@ -99,6 +99,39 @@ consumers:
 
 ---
 
+#### install-hooks — Opt-In Git Hooks Installer
+
+**Purpose**: Set `git config core.hooksPath .githooks` in the current repo so the repo's `.githooks/` gate (e.g. the commit-msg hook that enforces the Regen-Source trailer on snapshot-tracked edits) takes effect. Opt-in by design (a BL-025-m.5 PM constraint): auto-installing hooks at plugin-install time would be an onboarding speedbump for adopters whose workflow does not include regen.
+
+**Invocation**: `oj-helper install-hooks` (no arguments; run from inside the target repo)
+
+**Protocol**:
+1. Verify `$PWD` is inside a git working tree (`git rev-parse --is-inside-work-tree`); `die` if not
+2. Resolve the repo top-level and require `<toplevel>/.githooks` to exist; `die` if missing
+3. Require `.githooks/` to contain at least one executable hook file; `die` if none, so an empty directory never silently appears "installed"
+4. Set `git config core.hooksPath .githooks` in the current repo only - repo-local `.git/config`, never global git config and never any other working tree
+5. Print a one-line summary: `Installed: core.hooksPath -> .githooks (N hook(s) active)`
+
+**Usage**: Opt-in step for contributors who edit snapshot-tracked files and want the local commit-msg gate active. Idempotent - re-running yields the same end state. Exit 0 when installed or already installed (the summary prints either way); exit 1 on a driver error (not a git repo, `.githooks` missing, or no executable hooks). Adopters who do not regen can skip it entirely.
+
+---
+
+#### resolve-path — Canonical State-Path Resolver
+
+**Purpose**: Echo the absolute path OpenJunto should use for a canonical state file or directory, honoring per-project layout and overrides. Skills (save-session, show-backlog, run-task, cycle) and CONDUCTOR templates historically hardcoded `.claude/state/session.md`, `.claude/BACKLOG.md`, and `.claude/artifacts/`; a project that relocated state had no way to redirect OpenJunto without forking every skill. resolve-path centralizes the decision: a skill asks for a key, oj-helper returns the path.
+
+**Invocation**: `oj-helper resolve-path <key> [--workspace PATH]`, where `<key>` is one of `session | backlog | artifacts | state-dir | config | retros`
+
+**Protocol**:
+1. Resolve the workspace root (the directory that contains `.claude/`), in order: (1) `--workspace PATH` (must exist); (2) `$OJ_STATE_ROOT`, set by a SessionStart hook - a trailing `/.claude/local` or `/.claude` is tolerated and stripped; (3) the nearest ancestor of `$PWD` (including `$PWD`) that contains a `.claude/` directory; (4) `$PWD`
+2. Map the key to its default workspace-relative path - oj state lives directly under `.claude/`: `session` -> `.claude/state/session.md`, `backlog` -> `.claude/BACKLOG.md`, `artifacts` -> `.claude/artifacts`, `state-dir` -> `.claude/state`, `config` -> `.claude`, `retros` -> `.claude/archive/retros`
+3. Apply per-key overrides: `<root>/.claude/oj-paths.env` may set `key=workspace-relative-path` (with `#` comments and surrounding whitespace allowed); an override wins over the default for that key
+4. Emit exactly one absolute path on stdout; the path is NOT created (resolve-path is pure resolution, safe to call before the file exists)
+
+**Usage**: Called by state-touching skills instead of hardcoding paths, so a project can relocate its state via `.claude/oj-paths.env` without every skill being forked. Exit 0 on success; exit 1 on a bad key or an unresolvable workspace (e.g. a `--workspace` path that does not exist).
+
+---
+
 #### Issue Tracker Subcommands
 
 > **Design principle**: These subcommands define a **generic interface** for issue tracking. The default implementation uses GitHub Issues via `gh` CLI. Organizations using other tools (e.g., Linear, GitLab) can replace these via the enterprise overlay pattern (spec D72).
