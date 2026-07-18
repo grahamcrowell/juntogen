@@ -19,12 +19,14 @@ Also examine the actual OpenJunto source files for reference. These are the cano
 - `{OJ_SOURCE}/skills/save-session/SKILL.md` — persist session state before `/clear`
 - `{OJ_SOURCE}/skills/show-backlog/SKILL.md` — display a concise read-only summary of the backlog
 - `{OJ_SOURCE}/skills/spec/SKILL.md`         — front-half authoring (reqs/design/plan/refresh) + backlog graduation
+- `{OJ_SOURCE}/skills/backlog-compact/SKILL.md` — size-triggered backlog compaction (pin to a git blob, then rewrite active items into the compact single-sourced schema)
+- `{OJ_SOURCE}/skills/workstream-new/SKILL.md` — scaffold a parallel-workstream execution thread (git worktree + symlinked shared state) via the `oj-helper workstream-new` subcommand
 
-The pre-plugin form of these protocols lived at `~/.claude/commands/*.md` (legacy `run-task.md`, `save-session.md`, `show-backlog.md`). The plugin tree retains the same operational content but reshapes it into the SKILL.md contract documented below. New `cycle` and `health-check` skills have no pre-plugin command equivalent — read the `{OJ_SOURCE}` skill bodies for their canonical content.
+The pre-plugin form of these protocols lived at `~/.claude/commands/*.md` (legacy `run-task.md`, `save-session.md`, `show-backlog.md`). The plugin tree retains the same operational content but reshapes it into the SKILL.md contract documented below. New `cycle`, `health-check`, `backlog-compact`, and `workstream-new` skills have no pre-plugin command equivalent — read the `{OJ_SOURCE}` skill bodies for their canonical content.
 
 ## Task
 
-Generate **6 skill files** in plugin form. The Claude plugin host loads skills from `skills/<name>/SKILL.md` (directory-per-skill, not flat-file). Create each file at the path specified below:
+Generate **8 skill files** in plugin form. The Claude plugin host loads skills from `skills/<name>/SKILL.md` (directory-per-skill, not flat-file). Create each file at the path specified below:
 
 1. `skills/cycle/SKILL.md`        — autonomous backlog cycle skill
 2. `skills/health-check/SKILL.md` — runtime health probe skill
@@ -32,6 +34,8 @@ Generate **6 skill files** in plugin form. The Claude plugin host loads skills f
 4. `skills/save-session/SKILL.md` — session-state persistence skill
 5. `skills/show-backlog/SKILL.md` — read-only backlog summary skill
 6. `skills/spec/SKILL.md`         — front-half authoring + backlog graduation skill
+7. `skills/backlog-compact/SKILL.md` — size-triggered backlog compaction skill
+8. `skills/workstream-new/SKILL.md` — parallel-workstream scaffolding skill
 
 Each SKILL.md is a markdown instruction set with YAML frontmatter (not an executable script). The plugin host activates a skill when the user invokes its slash-command surface (`/cycle`, `/health-check`, `/run-task`, `/save-session`, `/show-backlog`). Each skill defines a protocol — step-by-step instructions with decision points, constraints, and fallback behaviors that Claude follows when activated.
 
@@ -131,6 +135,7 @@ disable-model-invocation: true
 - **Verification-command execution as evidence (Phase 4 Test / Step 6 Test)**: generators MUST emit the verification-command-execution behavior into BOTH the run-task Phase-4 Test subsection AND the cycle Step-6 Test subsection. The emitted prose MUST instruct the skill to: (1) execute the selected item's graduated verification command verbatim - the command written into the item's acceptance by graduation (D56 § Backlog Graduation field mapping + the graduation INVARIANT); (2) report the command invoked plus its actual output / exit code as the evidence of completion, never a bare "tests pass" assertion; (3) run the item's verification command FIRST, then the existing balanced-suite / no-regressions check second, with both appearing in the evidence (ADD, do not replace); (4) treat a non-zero exit as a hard block on the commit - stop and surface to the user via the existing stop-and-ask-if-blocked-or-uncertain constraint, do NOT rationalize the failure and proceed; (5) when the item carries no verification command, fall back to the balanced-suite / no-regressions check and state explicitly that no item-specific verification command was present. This consumer half pairs with the graduation producer half in step-05 / D56; without this directive a regen would silently revert the two SKILL.md Test edits. Preserve process-noun hygiene per the directive below (run-task says "invocation"/"task", cycle says "THIS item").
 
 - **Live-state reconciliation at kickoff (Phase 3 top / Step 4 top)**: this directive is the deliberate paired bookend of the "Verification-command execution as evidence" directive above - that one is the EXIT gate at Deliver (verify the item's definition-of-done before commit); this one is the ENTRY gate to Execute (re-verify the item's cited live state before any planning or code). Generators MUST emit the reconciliation behavior into BOTH the run-task Phase-3 top (a new `#### Reconcile Live State` subsection placed BEFORE `#### Plan Stakeholder Engagement`) AND the cycle Step-4 top (folded in as the FIRST content of `### Step 4 — Plan Stakeholder Engagement`, scoped "for THIS item"). The emitted prose MUST instruct the skill to: (1) determine whether the selected item cites live external state - a `Source:` back-reference to an originating plan task, references to external artifacts with an independent lifecycle (reviewable changes / prior work products / external resources / tickets / commits), or a `Blocked By` dependency on another item; (2) when it cites external state, re-verify each cited reference against current reality before stakeholder-engagement planning begins - for cited reviewable changes use the platform's change-state query (e.g. `gh pr view <n> --json state,mergedAt,mergeable`, reusing the pattern save-session already uses), for a `Blocked By` predecessor re-read its backlog status, for a cited file/resource run a targeted existence/shape check, and for a `Source:` plan task diff the plan task against the graduated item; (3) report for each reconciliation: what was cited (or "nothing cited"), the exact check run, a verdict of `CURRENT` | `DRIFTED` | `UNCHECKABLE`, and the action taken; (4) on `DRIFTED` (cited change merged/closed, dependency actually still open, resource gone/changed, plan task diverged) STOP and surface to the user rather than proceeding on the stale premise and rather than auto-adjusting - tie this to the existing "stop and ask if blocked or uncertain" constraint, and for cycle present it as a concrete instance of the existing gate 4 (User-only decision), "a decision only the user can make", stop condition in the Loop & Stop Conditions block (do NOT add a new numbered stop-gate); (5) treat `UNCHECKABLE` (e.g. the check tool is unreachable) as non-blocking but state it explicitly, matching the existing "issue tracker failures are non-blocking" pattern; (6) when the item cites nothing external, state explicitly "no live-state cited - reconciliation is a no-op" rather than omitting the step or emitting a hollow always-passes check. Without this directive a regen would silently drop the two SKILL.md Reconcile-Live-State edits. Preserve process-noun hygiene per the directive below (run-task says "invocation"/"task" and reserves "cycle" for the sibling `/cycle` command; cycle says "THIS item").
+- **Cross-reference refresh at Update Backlog (Deliver single-source enforcement)**: the write-side companion to the § Backlog Item Schema single-source discipline (D56). Generators MUST emit this behavior into BOTH the run-task Phase-4 `#### Update Backlog` (BACKLOG.md-mode sub-bullets) AND the cycle Step-8 `Update Backlog`. The emitted prose MUST instruct the skill to: (1) stamp any `Status` line it writes or touches that asserts external state (a PR/branch/ticket) with `verified <today>` — an un-dated external-state assertion is unverified by construction; (2) when the delivered item changed the state of a PR, branch, or ticket the backlog references, grep the resolved backlog (and `session.md` if present) for EVERY other mention of that token — `grep -n "<pr-number-or-ticket-key>" <backlog-file> session.md` — and refresh every hit within the same commit (run-task: this invocation's commit; cycle: THIS item's per-item commit), not just the item the work started from, because a fact about an external artifact's state lives in exactly one place (the owning item's `Status` line) and every other table references it by id; (3) tie this to D56 § Backlog Item Schema (single-source INVARIANT) and the Phase-4 Deliver cross-reference-refresh OBSERVABLE. Without this directive a regen would silently drop the two SKILL.md Update-Backlog edits. Preserve process-noun hygiene (run-task says "invocation"/"task"; cycle says "THIS item").
 - **Process-noun consistency (run-task is single-shot, NOT a cycle)**: across ALL run-task sub-sections — the Phase-4 verification gate, and the Phase-5 Feedback, Artifacts, and Notify sub-sections — generators MUST refer to run-task's OWN process as an "invocation" / "run-task" / "task lifecycle", NEVER as a "cycle". The word "cycle" in run-task is reserved exclusively for referencing the sibling `/cycle` command (the multi-item loop); it MUST NOT name run-task's own single-shot process. Concretely: "during this run-task invocation" (not "during the cycle"); "Each run-task invocation produces exactly one new file" (not "Each cycle produces…"); "the run-task is complete … the next run-task invocation" (not "the cycle is complete … the next cycle"); "mid-run" / "mid-invocation" (not "mid-cycle"). This complements the Constraints directive below and the cycle-vs-run-task asymmetry directive in the cycle-skill section — keep the live artifact and a regen in agreement.
 
 Constraints section (stated INDEPENDENTLY of the cycle skill — do NOT reuse cycle-skill multi-item loop language here): exactly one backlog item per invocation (run-task does NOT loop); atomic commits; do not proceed past blocking peer review; stop and ask when blocked or uncertain; issue tracker failures are non-blocking. Reentry on the next item requires a fresh user invocation of run-task.
@@ -151,15 +156,18 @@ disable-model-invocation: true
 
 `disable-model-invocation: true` is REQUIRED on `save-session` — it writes session state (only after user approval, but still a side-effecting persistence skill) and must only run on explicit `/save-session` invocation.
 
-**Body**: Reproduce the 7-step protocol from `{OJ_SOURCE}/skills/save-session/SKILL.md`:
+**Body**: Reproduce the 7-step protocol (plus the cadence-gated Step 4b) from `{OJ_SOURCE}/skills/save-session/SKILL.md`:
 
 - Step 1 — Read Current State: `.claude/state/session.md` (if exists), `.claude/CLAUDE.md`; offer to create from template at `${CLAUDE_PLUGIN_ROOT}/templates/session-state.md` if missing
 - Step 2 — Scan Working State: `git status` per repo (multi-repo aware); record branch + dirty/clean status
 - Step 3 — Check In-Flight PRs: `gh pr view` for each listed PR; update status fields
-- Step 4 — Verify Backlog Consistency: read `.claude/BACKLOG.md`, check header count, flag "Blocked By" → completed-item unblock candidates
+- Step 4 — Verify Backlog Consistency: read `.claude/BACKLOG.md`, check header count, flag "Blocked By" → completed-item unblock candidates, AND run the **self-consistency scan** (see directive below)
+- Step 4b — Reconcile External State (cadence-gated): see directive below
 - Step 5 — Check for Unprocessed Input: scan repo root for `tasks.md`, `notes.md`, `TODO.md`
 - Step 6 — Draft Session Update: compose updated `state/session.md` with session number, date, In-Flight PRs, workspace state, carry-over compression rules (older than 2 sessions → single-line; older than 14 days → drop)
 - Step 7 — Present and Apply: present diff-style summary, apply only after user approval
+
+- **Backlog self-consistency scan + external reconciliation (Step 4 / Step 4b)**: generators MUST emit BOTH behaviors into save-session, tied to D56 § Backlog Item Schema (single-source discipline) and § Session State Command. (a) **Self-consistency scan** (fold into Step 4): instruct the skill to extract every `#<N>` / `<PREFIX>-<N>` / ticket-key token appearing more than once across `<backlog-file>` and `<session-file>`, diff the surrounding status word (`OPEN`/`MERGED`/`CLOSED`/`DONE`/etc.) across occurrences, and flag any divergence as candidate drift — a PURE file-internal check with NO live `gh` / issue-tracker calls, the cheap complement to a full audit that catches duplicate-copy staleness. (b) **Step 4b reconcile** (a new subsection between Step 4 and Step 5): instruct the skill to inbound-reconcile external state on a cadence (references whose `verified <date>` is older than a few days, or an item the save is about to record a decision on) — reuse Step 3's `gh pr view` results for in-flight PRs, and in issue-tracker mode run `oj-helper issue-tracker-list` to compare live status against what each referencing item asserts (platform-neutral via the `issue-tracker-*` abstraction); report drift as a flagged inconsistency for the user to confirm, do NOT auto-rewrite item scope/status from an externally-made transition (re-opening is a user decision), and state a no-op explicitly when nothing is stale enough to re-poll. Without this directive a regen would drop the Step 4 scan and the Step 4b subsection.
 
 Constraints: approval required, non-destructive, graceful degradation, no network calls beyond git/gh.
 
@@ -212,7 +220,7 @@ disable-model-invocation: true
   - **G1 backlog-source branch**: `oj-helper issue-tracker-check` → issue-tracker mode, else `oj-helper resolve-path backlog` → file-backed mode (identical detection to `/run-task`, `/show-backlog`).
   - **G2 priority derivation**: critical-path default (on-path → higher band, off-path → one lower, security/one-way-door → top); an explicit per-task `priority:` field overrides the derived band and breaks ties.
   - **G3 match**: topological sort by `blockedBy`; match existing items by `Source: <plan-doc>#T-<subject>-NN`; classify create / update / hold (in-progress or done — never modified) / cancel.
-  - **G4 build + validate, NO writes**: build every item in memory (title, acceptance = the task's verification command verbatim, `Blocked By` = graduated predecessor ids, `Source:` back-ref, priority); then validate the whole set (predecessors resolve, no id/`Source:` collision, required fields present). If any task fails validation, ABORT in prepare — write nothing, present nothing.
+  - **G4 build + validate, NO writes**: build every item in memory **in the § Backlog Item Schema shape** (`${CLAUDE_PLUGIN_ROOT}/templates/backlog.md`) — title; `AC` = the task's verification command verbatim; `Links` = graduated predecessor ids as `Blocked By` plus any cited external artifact as a reference (never a restated status); `Source:` back-ref; priority; and per the single-source discipline, any `Status` asserting external state carries a `verified <today>` stamp and graduation adds NO second copy of an external-state fact (it links, it does not cache). Then validate the whole set (predecessors resolve, no id/`Source:` collision, required fields present). If any task fails validation, ABORT in prepare — write nothing, present nothing.
   - **G5 whole-set confirmation gate**: present the full create/update/hold/cancel set via `AskUserQuestion`; batch approval only (no per-item); write nothing until approved; nothing written on rejection.
   - **G6 atomic commit (all-or-none per plan)**: file-backed mode applies all changes to an in-memory copy and writes the whole backlog document in a single replace (temp-file-then-move); issue-tracker mode emulates a transaction — track every key created this invocation, and on ANY create/link failure ROLL BACK (close or delete the created keys, discard staged sidecar entries) leaving the tracker byte-identical to its pre-graduation state; commit the sidecar map `<plan-doc>.map` only after all creates+links succeed.
   - **G7 backlink the plan** — only after G6 commits; if G6 rolled back, do NOT touch the plan.
@@ -221,6 +229,58 @@ disable-model-invocation: true
 - **Verification-command emptiness warning (plan mode, alongside the oversized-task warn)**: the generated Step 2 of plan mode (critical-path computation) MUST also emit a SHOULD-warn, advisory-only check: if a task's `verify:` command contains no assertion-bearing invocation - only `true`, `:`, `echo ...`, `exit 0`, or comments, with no test-runner/build/lint/validate call - warn the author and recommend a real check. This is a sibling warning to the oversized-task warn (same step, same "warn, do not block" register) and MUST NOT gate or alter graduation's verbatim copy of the verification command (G4/`D56` § Backlog Graduation invariant). Reproduce this from `{OJ_SOURCE}/skills/spec/SKILL.md` plan mode, where it is stated concretely with the trivially-green forms named. Without this directive a regen would drop the SKILL edit.
 
 > The graduation step reads and writes the same backlog surface as `/run-task` and `/cycle`; keep its source-detection and item schema identical so the three skills interoperate. Cross-reference `${CLAUDE_PLUGIN_ROOT}/reference/execution-protocol.md` for tier mechanics and `.claude/CLAUDE.md` for project-specific backlog conventions.
+
+### 7. backlog-compact skill — `skills/backlog-compact/SKILL.md`
+
+**Purpose**: Size-triggered backlog hygiene. Keep the file-backed backlog small enough that a single read holds it in view, so drift stays catchable by routine edits rather than a dedicated audit. Pin the current file to a retrievable git snapshot, then rewrite active items into the compact § Backlog Item Schema shape, relocating implementation narrative to its existing home (commits, PR descriptions, session state). All changes presented for approval before writing. Canonical spec: `D56-commands-automation.md` § Backlog Compaction Command + § Backlog Item Schema and Single-Source Discipline.
+
+**YAML frontmatter** (verbatim):
+```yaml
+---
+description: Size-triggered backlog hygiene -- pin the current backlog to a git blob, then rewrite active items into the compact single-sourced schema; requires user approval before writing
+disable-model-invocation: true
+---
+```
+
+`disable-model-invocation: true` is REQUIRED on `backlog-compact` — it rewrites the backlog file (only after user approval, but still a side-effecting persistence skill), same invocation-control class as `cycle`, `run-task`, `save-session`, and `spec`. It gets NO `context: fork` or `allowed-tools`.
+
+**Body**: Reproduce the protocol from `{OJ_SOURCE}/skills/backlog-compact/SKILL.md`:
+
+- **Step 0 — Resolve path**: `oj-helper resolve-path backlog` (fallback `.claude/BACKLOG.md`). In issue-tracker mode there is no large local file to compact — report and stop.
+- **Step 1 — Measure and gate**: read the backlog; trigger at roughly 500-600 lines OR when a single read needs more than one page; below the threshold report the size and stop unless the user forces a run.
+- **Step 2 — Pin (non-destructive, BEFORE any rewrite)**: `git hash-object -w <backlog-file>` (or record the committed blob/commit SHA for a clean tracked file); capture the pin reference for the rewritten header's history line.
+- **Step 3 — Rewrite compact**: in memory against `${CLAUDE_PLUGIN_ROOT}/templates/backlog.md` — preserve item ids exactly (never renumber) and workstream structure; keep only status + blocker per open item (`Status` with `verified <date>`, `Urgency`, `AC`, `Links`, `Context` only when load-bearing); move narrative out to its existing home (promote + link first if it lives nowhere else); collapse closed items to one-line markers; update the header history line to the Step 2 pin.
+- **Step 4 — Self-consistency scan**: run the same duplicate-token status-divergence scan the save-session skill runs (§ Session State Command Step 4), so the rewrite does not carry a stale duplicate forward.
+- **Step 5 — Present and apply**: diff-style summary (line count before/after, pin reference, items compacted, narrative relocated + where, drift found); apply only after approval; write atomically (single-replace: temp file then move).
+
+Constraints: approval required; non-destructive (pin before rewrite; never drop content without preserving it in the pin or relocating load-bearing substance to a linked home); preserve ids exactly; single-sourced output; atomic write; graceful degradation (issue-tracker mode / missing `git` → stop, do not rewrite without a snapshot).
+
+Cross-references use `${CLAUDE_PLUGIN_ROOT}/templates/backlog.md` (target schema) and `/save-session` (the session-state analog of the same non-destructive, approval-gated, compaction pattern).
+
+### 8. workstream-new skill — `skills/workstream-new/SKILL.md`
+
+**Purpose**: Scaffold an isolated parallel `/cycle` execution thread — its own directory, its own git worktree on its own branch, and a per-workstream `.claude/CLAUDE.md` enforcing a `[ws: <wsid>]` tagging discipline — while SHARING the workspace's canonical `.claude/BACKLOG.md`, session state, and artifacts with every other concurrent workstream. The scaffolding filesystem work is done by the `oj-helper workstream-new` subcommand (step-07); the skill elicits inputs, invokes the helper, and surfaces the helper's next-steps block to the user. Canonical spec: `D56-commands-automation.md` § Workstream Scaffolding Command.
+
+**YAML frontmatter** (verbatim):
+```yaml
+---
+description: Scaffold a parallel-workstream directory (git worktree + linked .claude/ state) for running an isolated /oj:cycle thread against a shared workspace
+disable-model-invocation: true
+---
+```
+
+`disable-model-invocation: true` is REQUIRED on `workstream-new` — it triggers side-effecting scaffolding (a new worktree + linked state) via the helper, same invocation-control class as `cycle`, `run-task`, `save-session`, `spec`, and `backlog-compact`. NO `context: fork` or `allowed-tools`.
+
+**Body**: Reproduce the protocol from `{OJ_SOURCE}/skills/workstream-new/SKILL.md`:
+
+- **One workstream concept, two surfaces** (emit near the top): the execution workstream this skill scaffolds is the same workstream the shared backlog groups items under — the `WS-<X>` blocks (goal / sequencing / current bottleneck) of `${CLAUDE_PLUGIN_ROOT}/templates/backlog.md` (D56 § Backlog Item Schema). A parallel `/cycle` thread should have a declared home in that backlog so its work is visible and single-sourced.
+- **Step 1 — Elicit args**: `WSID` (workstream id; directory + default branch name; prefer one that maps to a `WS-<X>` backlog block, and if no such block exists flag to the user to add one per `${CLAUDE_PLUGIN_ROOT}/templates/backlog.md` — the skill does not edit the backlog itself) and `REPO` (repo dir inside the workspace); optional `BRANCH` (default `<wsid>`) and `--workspace PATH` (else the helper walks up from `$PWD` for `.claude/state/session.md`). If WSID or REPO is missing, ask before proceeding.
+- **Step 2 — Invoke the helper**: `oj-helper workstream-new <wsid> <repo> [branch] [--workspace <path>]`; capture stdout/stderr and the exit code; on non-zero exit, surface the helper's stderr verbatim and stop.
+- **Step 3 — Surface next steps**: on exit 0, present the helper's "Next steps:" block verbatim and explain that the `cd` + `claude` launch must be run by the user in their terminal, not by this session.
+
+Constraints: do NOT execute the `cd` or launch `claude` on the user's behalf; do NOT modify `.claude/BACKLOG.md`, session state, or workspace files (the helper does all filesystem work); on non-zero helper exit, quote stderr verbatim and stop.
+
+Cross-references use `${CLAUDE_PLUGIN_ROOT}/templates/backlog.md` (the `WS-<X>` workstream schema) and the `oj-helper workstream-new` subcommand (step-07).
 
 ## Format Requirements
 
@@ -239,8 +299,8 @@ Each SKILL.md must:
 
 After generation, verify each SKILL.md:
 
-1. **Path**: file exists at `skills/<name>/SKILL.md` (directory-per-skill, not flat). All 6 directories present: `skills/cycle/`, `skills/health-check/`, `skills/run-task/`, `skills/save-session/`, `skills/show-backlog/`, `skills/spec/`.
-2. **Frontmatter**: file begins with `---` on line 1, contains a `description:` line, closes with `---` before the body. **Invocation controls (Item 7)**: the side-effecting skills (`cycle`, `run-task`, `save-session`, `spec`) each carry `disable-model-invocation: true`; the read-only skills (`show-backlog`, `health-check`) each carry `allowed-tools: [Bash, Read, Grep, Glob]` (a read-only set — no write/edit tools) and `context: fork`. The side-effecting skills do NOT get `context: fork` or `allowed-tools`; the read-only skills do NOT get `disable-model-invocation`.
+1. **Path**: file exists at `skills/<name>/SKILL.md` (directory-per-skill, not flat). All 8 directories present: `skills/cycle/`, `skills/health-check/`, `skills/run-task/`, `skills/save-session/`, `skills/show-backlog/`, `skills/spec/`, `skills/backlog-compact/`, `skills/workstream-new/`.
+2. **Frontmatter**: file begins with `---` on line 1, contains a `description:` line, closes with `---` before the body. **Invocation controls (Item 7)**: the side-effecting skills (`cycle`, `run-task`, `save-session`, `spec`, `backlog-compact`, `workstream-new`) each carry `disable-model-invocation: true`; the read-only skills (`show-backlog`, `health-check`) each carry `allowed-tools: [Bash, Read, Grep, Glob]` (a read-only set — no write/edit tools) and `context: fork`. The side-effecting skills do NOT get `context: fork` or `allowed-tools`; the read-only skills do NOT get `disable-model-invocation`.
 3. **Body**: more than 5 lines of markdown content after the frontmatter.
 4. **Phase/step completeness**: each skill reproduces the steps documented in the corresponding `{OJ_SOURCE}/skills/<name>/SKILL.md` baseline.
 5. **Decision logic**: backlog source detection logic appears identical in both /run-task and /show-backlog (both call `oj-helper issue-tracker-check` and parse exit code + JSON `.project` field).
@@ -253,6 +313,6 @@ After generation, verify each SKILL.md:
 
 - **Step 01** (CONDUCTOR.md) must be complete — defines the slim two-dimensional triage (incl. the Trivial fast-path) and tier overview referenced by each skill body
 - **Step 04** (reference files) must be complete — skills cross-reference `${CLAUDE_PLUGIN_ROOT}/reference/stakeholder-guide.md`, `workflow-stages.md`, and the full execution mechanics / model-selection table in `${CLAUDE_PLUGIN_ROOT}/reference/execution-protocol.md`
-- **Step 05** (templates) must be complete — skills cross-reference `${CLAUDE_PLUGIN_ROOT}/templates/session-state.md`, `retrospective.md`; the `spec` skill additionally references the front-half templates `${CLAUDE_PLUGIN_ROOT}/templates/{requirements,design,implementation-plan}.md`
-- **Step 07** (oj-helper script) must be complete — skills invoke `oj-helper` subcommands (`issue-tracker-check`, `issue-tracker-list`, `issue-tracker-transition`, `feedback-path`, `conductor-inject`); the `spec` skill additionally invokes `resolve-path backlog`, `issue-tracker-create`, and `issue-tracker-link-list` during graduation
+- **Step 05** (templates) must be complete — skills cross-reference `${CLAUDE_PLUGIN_ROOT}/templates/session-state.md`, `retrospective.md`; the `spec` skill additionally references the front-half templates `${CLAUDE_PLUGIN_ROOT}/templates/{requirements,design,implementation-plan}.md`; the `backlog-compact` skill (and graduation's item-build) reference `${CLAUDE_PLUGIN_ROOT}/templates/backlog.md`
+- **Step 07** (oj-helper script) must be complete — skills invoke `oj-helper` subcommands (`issue-tracker-check`, `issue-tracker-list`, `issue-tracker-transition`, `feedback-path`, `conductor-inject`); the `spec` skill additionally invokes `resolve-path backlog`, `issue-tracker-create`, and `issue-tracker-link-list` during graduation; the `workstream-new` skill invokes the `workstream-new` subcommand (step-07 § 13), and `backlog-compact` invokes `resolve-path backlog`
 - **D56** § Spec Authoring Command (front-half) + § Backlog Graduation — canonical source for the `spec` skill's modes and the Step G graduation protocol (identity/back-reference, field mapping, priority derivation, dependency translation, idempotent upsert, atomicity, external-id hygiene, confirmation/decomposition)

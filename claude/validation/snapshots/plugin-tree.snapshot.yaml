@@ -36,6 +36,20 @@
 # juntogen/claude/step-01-workstream-new.md - a generator prompt mistakenly
 # committed into the plugin tree - was removed from oj-claude rather than
 # snapshotted.)
+#
+# Backlog-SSOT refresh (2026-07-18): catches up with the single-source
+# backlog work (D56 § Backlog Item Schema; step-05 template #9; step-06
+# skill #7). ADDs two new files -- skills/backlog-compact/SKILL.md and
+# templates/backlog.md -- and folds in four paths that prior hand-cuts wrote
+# to the tree without snapshotting: skills/spec/SKILL.md and
+# templates/{requirements,design,implementation-plan}.md.
+#
+# Sandbox-removal + workstream-promotion (2026-07-18): REMOVEs the two
+# sandbox-worker skills skills/{delegate-sandbox,sandbox-cycle}/SKILL.md
+# (they depended on an external claude-sandbox repo; dropped from the
+# plugin). workstream-new is PROMOTED into the generator (step-06 skill +
+# step-07 helper subcommand + D56 seed command) so it survives regen; its
+# snapshot entry is unchanged (already present).
 ---
 snapshot_version: "1"
 captured_at: "2026-05-11T19:35:44Z"
@@ -137,16 +151,20 @@ files:
   - "scripts/tests/pre-commit-test.sh"
   - "scripts/tests/v0.1.0-regression-test.sh"
   - "scripts/validate-plugin.sh"
+  - "skills/backlog-compact/SKILL.md"
   - "skills/cycle/SKILL.md"
-  - "skills/delegate-sandbox/SKILL.md"
   - "skills/health-check/SKILL.md"
   - "skills/run-task/SKILL.md"
-  - "skills/sandbox-cycle/SKILL.md"
   - "skills/save-session/SKILL.md"
   - "skills/show-backlog/SKILL.md"
+  - "skills/spec/SKILL.md"
   - "skills/workstream-new/SKILL.md"
   - "templates/architecture-decision-record.md"
+  - "templates/backlog.md"
   - "templates/communications-playbook.md"
+  - "templates/design.md"
+  - "templates/implementation-plan.md"
+  - "templates/requirements.md"
   - "templates/retrospective.md"
   - "templates/session-state.md"
   - "templates/technical-analysis.md"
