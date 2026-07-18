@@ -4,8 +4,8 @@
 
 Read these specification files before generating:
 
-1. **Primary spec**: `D48-reference-system.md` § Template Inventory — defines the 8 templates, when to use each, and essential sections
-2. **Supporting context**: Review Template Evolution and Template Selection notes in spec D48. The three front-half templates (requirements/design/implementation-plan) are consumed by the spec skill (`D56-commands-automation.md` § Spec Authoring Command); `implementation-plan.md` carries the `T-<subject>-NN` task shape that `D56` § Backlog Graduation reads.
+1. **Primary spec**: `D48-reference-system.md` § Template Inventory — defines the 9 templates, when to use each, and essential sections
+2. **Supporting context**: Review Template Evolution and Template Selection notes in spec D48. The three front-half templates (requirements/design/implementation-plan) are consumed by the spec skill (`D56-commands-automation.md` § Spec Authoring Command); `implementation-plan.md` carries the `T-<subject>-NN` task shape that `D56` § Backlog Graduation reads. The `backlog.md` template encodes `D56` § Backlog Item Schema and Single-Source Discipline — the workstream-first, single-sourced item shape that graduation writes, the task lifecycle delivers into, save-session audits, and backlog-compact rewrites; read that D56 section before generating it.
 
 Also examine the actual OpenJunto source files for reference:
 - `templates/technical-analysis.md`
@@ -16,10 +16,11 @@ Also examine the actual OpenJunto source files for reference:
 - `templates/requirements.md`
 - `templates/design.md`
 - `templates/implementation-plan.md`
+- `templates/backlog.md`
 
 ## Task
 
-Generate **8 deliverable templates** in markdown format. Create each file at the path specified:
+Generate **9 deliverable templates** in markdown format. Create each file at the path specified:
 
 1. `templates/technical-analysis.md`
 2. `templates/architecture-decision-record.md`
@@ -29,6 +30,7 @@ Generate **8 deliverable templates** in markdown format. Create each file at the
 6. `templates/requirements.md`
 7. `templates/design.md`
 8. `templates/implementation-plan.md`
+9. `templates/backlog.md`
 
 Each template is a structured format for a common deliverable type. Templates are starting points — projects copy to `.claude/` and customize as needed.
 
@@ -200,6 +202,25 @@ Each template is a structured format for a common deliverable type. Templates ar
 - Warn/split tasks over ~1.5-2 dev-days so each maps to one PR
 - Task IDs and the Graduation Record are the wiring into `D56` § Backlog Graduation — keep the shape exact
 
+### 9. backlog.md
+
+**When to use**: Seed shape for a project's `.claude/BACKLOG.md` in file-backed mode — the canonical single-sourced, workstream-first item schema. Copied into `.claude/` and grown in place; graduation (spec skill), the task lifecycle (run-task/cycle Deliver), save-session (audit), and backlog-compact (rewrite) all read/write this exact shape. Canonical spec: `D56-commands-automation.md` § Backlog Item Schema and Single-Source Discipline — read it before generating.
+
+**Essential sections**:
+1. **Header**: blockquote stating the prefix scheme (`<PREFIX>-NNN`, stable, never renumbered), the item format, the `Urgency` vocabulary (`currently-blocking` / `eventual-blocker` / `aspirational` / `dated <YYYY-MM-DD>`), and the freshness rule (any external-state `Status` carries a `verified <YYYY-MM-DD>` stamp; un-dated is suspect)
+2. **Single-source discipline note** (HTML comment): a fact about external state (PR/branch/ticket) is asserted in exactly ONE place — the owning item's `Status` line; every other table references the item by id, never restates the state. Point, do not duplicate. Narrative lives in commits/PR/session.md, not the item. Compaction trigger at ~500-600 lines
+3. **Workstreams index**: table — WS (anchor link) | Goal | Current bottleneck | Items (id pointers only, NOT a status cache)
+4. **Per-workstream sections**: `<a id="ws-x">` anchor + `### WS-X — {name}` + a `> Goal / Sequencing` blockquote, then the workstream's items
+5. **Per open item**: `- **<PREFIX>-NNN** — {title} [subject: {tag}] (added {date})` with sub-bullets `Status` (single authoritative state + `verified <date>`), `Urgency` (vocabulary + one-line justification), `AC` (definition of done; graduated `verify:` command lands here), `Links` (deps + external artifacts as references), optional `Source:` (graduation back-ref), optional `Context`
+6. **Open PR Register** (optional): dated-snapshot table for open PRs with NO owning item; header states it is a snapshot, not live-authoritative, and the owning item's Status wins on disagreement
+7. **Completed / Retired**: closed items collapsed to one-line markers
+
+**Format notes**:
+- The single-source discipline and the `verified <date>` stamp are the load-bearing conventions — emphasize them; they are what make the file a source of truth rather than a drifting cache
+- The template must MODEL the compact discipline it preaches — keep it tight, use `{BRACES}` placeholders and instructional `<!-- HTML comments -->`, no multi-paragraph example items
+- Org-neutral: no org-specific repos, tracker keys, or URLs (Axiom 7); use generic `{org/repo#N}` / `<PREFIX>-NNN` placeholders
+- Item ids and the workstream/single-source shape are the wiring into `D56` § Backlog Item Schema — keep it exact so graduation, delivery, audit, and compaction interoperate
+
 ## Format Requirements
 
 Each template must:
@@ -225,4 +246,4 @@ After generation, verify each template:
 - **Step 04** (reference files) must be complete — templates are referenced in workflow-stages.md and project-scaffolding.md
 
 Consumers:
-- **Step 06** (skills) consumes the three front-half templates — the spec skill's `reqs`/`design`/`plan` modes reference `${CLAUDE_PLUGIN_ROOT}/templates/{requirements,design,implementation-plan}.md`, and `implementation-plan.md`'s `T-<subject>-NN` task shape is what Backlog Graduation (Step G) reads.
+- **Step 06** (skills) consumes the three front-half templates — the spec skill's `reqs`/`design`/`plan` modes reference `${CLAUDE_PLUGIN_ROOT}/templates/{requirements,design,implementation-plan}.md`, and `implementation-plan.md`'s `T-<subject>-NN` task shape is what Backlog Graduation (Step G) reads. Step 06 also consumes `templates/backlog.md`: the `backlog-compact` skill rewrites to it, `workstream-new` scaffolds its workstream shape, and graduation writes items in it — all four skills that touch the backlog (`spec`, `cycle`, `run-task`, `backlog-compact`) share this schema.
