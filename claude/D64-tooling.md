@@ -132,6 +132,35 @@ consumers:
 
 ---
 
+#### agent-teams-check — Agent Teams Capability Probe
+
+**Purpose**: Probe whether the host environment has the experimental agent-teams feature that binds the Convene primitive on this platform. Consumed by the cycle and run-task skills at the Complex-tier classification step, to choose between issuing `TeamCreate` and taking the Convene->Consult fallback.
+
+**Invocation**: `oj-helper agent-teams-check` (no arguments)
+
+**Protocol**: Reads `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` and emits a small JSON capability report (the `ok` / `available` / `reason` object) on stdout - jq-optional, with a hardcoded-JSON fallback when jq is absent. It ALWAYS exits 0 per Axiom 8: this is a capability report, not a precondition gate, so failing it would defeat the graceful-degradation path it exists to enable. For the exact JSON shape, the value-to-availability mapping, and why the probe never blocks, see the availability contract already documented in the `#### env` section under `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` - it is single-sourced there and not restated here.
+
+**Usage**: Complex-tier branch selection - an `available:false` report steers the cycle onto the degraded substrate. See the D32 Convene->Consult fallback (Axiom 8, graceful degradation).
+
+---
+
+#### workstream-new — Scaffold a Parallel-Workstream Directory
+
+**Purpose**: Scaffold `<workspace>/.workstreams/<wsid>/` for running an isolated `/oj:cycle` thread that shares the workspace's canonical `.claude/` state with other concurrent workstreams. The directory holds three things: a git worktree of the target repo at `./<repo>` on its own branch; a `.claude/` whose shared-state files (`state/session.md`, `BACKLOG.md`, `artifacts`) are SYMLINKS back to the canonical workspace state; and a per-workstream `.claude/CLAUDE.md` (a real file, never a symlink) carrying the `[ws: <wsid>]` tagging directive and the don't-touch-other-workstreams rule. The tagging overlay is what lets multiple concurrent `/oj:cycle` threads write into one shared backlog without collision. Pairs with D56 § Workstream Scaffolding Command.
+
+**Invocation**: `oj-helper workstream-new <wsid> <repo> [branch] [--workspace <path>]`
+
+**Protocol**:
+1. Argument parsing: positional `<wsid>` (required) and `<repo>` (required), optional positional `[branch]` (default `<wsid>`), and a `--workspace <path>` flag. Fail on a missing WSID or REPO, an unknown `--flag`, or an unexpected extra positional.
+2. Workspace-root resolution (root = the directory that holds the canonical `.claude/`), in order: (1) `--workspace <path>` (must exist); (2) `$OJ_STATE_ROOT` as the root, tolerating and stripping a trailing `/.claude/local` or `/.claude` suffix, when `<root>/.claude/state/session.md` exists; (3) `$PWD` when `$PWD/.claude/state/session.md` exists; (4) the nearest ancestor of `$PWD` that contains `.claude/state/session.md`. Fail with an actionable message if none resolves.
+3. Repo validation: fail if `<workspace>/<repo>` is not a directory or is not a git repo.
+4. Scaffold: create `<workspace>/.workstreams/<wsid>/.claude/`; symlink the canonical shared-state paths into it (`state/session.md` and `BACKLOG.md` required, `artifacts` optional); create a git worktree of `<repo>` at `./<repo>` on `<branch>` (the branch is created if it does not already exist); and write the per-workstream `.claude/CLAUDE.md` tagging directive.
+5. Idempotent: re-running yields the same end state. A pre-existing real state file is backed up with a timestamp suffix before being replaced with a symlink; a correct existing symlink is left as "already linked"; `.claude/CLAUDE.md` is never overwritten.
+
+**Usage**: Called by the workstream-new skill to stand up a parallel `/oj:cycle` thread. On success it prints a human-readable summary plus a `Next steps:` block (the `cd` / `claude` / `/rename` / `/oj:cycle` lines). Exit codes: `0` created or already present; `1` driver error (workspace unresolved, repo missing or not a git repo); `2` usage error.
+
+---
+
 #### Issue Tracker Subcommands
 
 > **Design principle**: These subcommands define a **generic interface** for issue tracking. The default implementation uses GitHub Issues via `gh` CLI. Organizations using other tools (e.g., Linear, GitLab) can replace these via the enterprise overlay pattern (spec D72).
