@@ -61,6 +61,7 @@ AGENTS_DIR="${PLUGIN_BASE}/agents"
 
 debug() { [[ "${OJ_HOOK_DEBUG:-${JUNTO_HOOK_DEBUG:-0}}" == "1" ]] && echo "[oj-helper] $*" >&2 || true; }
 die()   { echo "ERROR: $*" >&2; exit 1; }
+die_usage() { echo "ERROR: $*" >&2; exit 2; }
 ```
 
 **Core conventions**:
@@ -68,6 +69,7 @@ die()   { echo "ERROR: $*" >&2; exit 1; }
 - **Contracts source (load-bearing)**: ALL subcommands MUST be able to reference shared pinned-string constants (e.g., `OJ_STDERR_CONDUCTOR_MISSING`) from `bin/lib/contracts.sh`. The script header MUST `source` `lib/contracts.sh` with die-on-fail (see header block above). The contracts file is statically emitted by the generator — DO NOT inline-redefine the constants; sourcing failure must be fatal so drift is caught immediately.
 - `debug()` function — controlled by `OJ_HOOK_DEBUG=1` env var (legacy `JUNTO_HOOK_DEBUG` accepted as fallback), writes to stderr
 - `die()` function — fatal error with message to stderr, exits with code 1
+- `die_usage()` function — fatal USAGE error with message to stderr, exits with code 2. Distinct from `die()` (exit 1, driver/runtime errors). Currently used by `workstream-new`'s argument-validation paths (missing WSID, missing REPO, unknown flag, unexpected positional) so usage errors are distinguishable from driver errors by exit code.
 - **Shared version helper `_oj_plugin_version()`** (define once, near the top after `die`): resolves the plugin version string for the SessionStart banner AND the migrate-legacy sentinel. Resolution: prefer `${CLAUDE_PLUGIN_ROOT}/VERSION`; fall back to script-relative `../VERSION` (`$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/../VERSION`) for non-plugin-host invocations; fall back to the literal `unknown` if no readable VERSION file is found. Read with `head -1 ... | tr -d '[:space:]'`. DO NOT read the Makefile-era `~/.claude/.oj-version` file — that artifact belongs to the pre-plugin era and is what `migrate-legacy` detects. `migrate-legacy`'s `_migrate_plugin_version` MUST delegate to this shared helper (thin alias) rather than duplicate the resolution logic.
 
 ### Subcommand Functions
@@ -380,12 +382,12 @@ cmd_agent_teams_check() {
 
 **Critical implementation details**:
 
-1. **Argument parsing**: positional `WSID` (required) and `REPO` (required), optional positional `BRANCH` (default `<wsid>`), and flag `--workspace <path>`. `die` (usage) on a missing WSID/REPO, an unknown `--flag`, or an unexpected extra positional.
-2. **Workspace resolution** (helper `_workstream_resolve_workspace`, in order): (a) explicit `--workspace <path>` (must exist); (b) `$OJ_STATE_ROOT` env var as the workspace root, tolerating and stripping a trailing `/.claude/local` or `/.claude` suffix, when `<root>/.claude/state/session.md` exists (lets a SessionStart hook pin the canonical workspace regardless of `$PWD`); (c) `$PWD` if `$PWD/.claude/state/session.md` exists; (d) walk up from `$PWD` to the first ancestor containing `.claude/state/session.md`. `die` with an actionable message if none resolves.
-3. **Repo validation**: `die` if `<workspace>/<repo>` is not a directory or is not a git repo (`.git` absent).
+1. **Argument parsing**: positional `WSID` (required) and `REPO` (required), optional positional `BRANCH` (default `<wsid>`), and flag `--workspace <path>`. The FOUR usage-error paths - missing WSID, missing REPO, an unknown `--flag`, and an unexpected extra positional - MUST exit `2` via `die_usage` (NOT `die`), so a usage error is distinguishable from a driver error by exit code.
+2. **Workspace resolution** (helper `_workstream_resolve_workspace`, in order): (a) explicit `--workspace <path>` (must exist); (b) `$OJ_STATE_ROOT` env var as the workspace root, tolerating and stripping a trailing `/.claude/local` or `/.claude` suffix, when `<root>/.claude/state/session.md` exists (lets a SessionStart hook pin the canonical workspace regardless of `$PWD`); (c) `$PWD` if `$PWD/.claude/state/session.md` exists; (d) walk up from `$PWD` to the first ancestor containing `.claude/state/session.md`. This is a driver error: `die` (exit 1, NOT `die_usage`) with an actionable message if none resolves. The helper's own `--workspace path does not exist` case is likewise a driver error (exit 1 via `die`).
+3. **Repo validation**: driver error - `die` (exit 1) if `<workspace>/<repo>` is not a directory or is not a git repo (`.git` absent).
 4. **Scaffold**: create `<workspace>/.workstreams/<wsid>/.claude/`; symlink the canonical shared-state paths into it (`state/session.md` required, `BACKLOG.md` required, `artifacts` optional) via a link helper that backs up any pre-existing real file with a timestamp suffix before replacing it with a symlink, and is idempotent (a correct existing symlink is left as "already linked"); create a git worktree of `<repo>` at `./<repo>` on `<branch>`; and write a real (never-overwritten) per-workstream `.claude/CLAUDE.md` carrying the `[ws: <wsid>]` tagging directive and the don't-touch-other-workstreams rule.
 5. **Idempotent**: re-running yields the same end state. `.claude/CLAUDE.md` is never overwritten; existing real state files are backed up before being linked.
-6. **Output**: a human-readable summary plus a `Next steps:` block (the `cd` / `claude` / `/rename` / `/oj:cycle` lines the skill surfaces verbatim). **Exit codes**: `0` created-or-already-present; `1` driver error (workspace unresolved, repo missing); `2` usage error.
+6. **Output**: a human-readable summary plus a `Next steps:` block (the `cd` / `claude` / `/rename` / `/oj:cycle` lines the skill surfaces verbatim). **Exit codes**: `0` created-or-already-present; `1` driver error via `die` (workspace unresolvable, repo missing, not a git repo); `2` usage error via `die_usage` (missing WSID, missing REPO, unknown flag, unexpected positional). The distinction is load-bearing: usage errors (2 via `die_usage`) vs driver errors (1 via `die`) MUST be routed through the matching helper so the exit code is unambiguous.
 
 **Why this matters**: the `workstream-new` skill's entire filesystem contract lives here — worktree creation, shared-state symlinking, and the tagging overlay that makes concurrent `/oj:cycle` threads safe against one shared backlog. A regen that omits this subcommand leaves the generated `workstream-new` skill calling a dispatcher branch that `die`s with "Unknown subcommand".
 
