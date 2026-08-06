@@ -160,6 +160,8 @@ platform:
       max_output_tokens: 128000
       cost_ratio: 2.0
       effort: "high"
+  model_policy:
+    min_model_tier: "routine"   # minimum-model floor; see Schema Field Notes
   hooks:
     - point: "SubagentStart"
       capabilities: ["modify_prompt", "add_context"]
@@ -182,6 +184,7 @@ platform:
 - **`models[].cost_ratio`**: Relative input token cost with opus[1m] (the implementation tier) as 1.0 baseline. Used by Chain 7 (model selection) and Chain 6 (stakeholder escalation). Not an absolute price — update when relative costs shift significantly.
 - **`_meta.introspection_coverage`**: Present when `mode=declaration` and the declaration was produced by the introspection sub-step. Per-category markers (`full`, `partial`, `none`) documenting which fields were observed from the live session vs. filled from defaults. Enables downstream consumers to assess confidence in platform facts.
 - **`constraints.max_concurrent_agents_type`**: `configured` means the value is a tunable recommendation, not a hard platform ceiling. Derivation chains that use this value should apply it differently depending on type.
+- **`model_policy.min_model_tier`**: Operator-set minimum-model floor — the lowest tier any spawn may run on (`routine` | `implementation` | `reasoning`; ordering `routine < implementation < reasoning`; default `routine` = no floor). Used by Chain 7 (model selection): after function rules and role defaults resolve a tier, a below-floor tier is raised to the floor and an at-or-above tier is left unchanged (lower bound only — never lowers a selection). This is operator intent, not an observable platform fact — it is always filled from defaults, never from introspection.
 - **`hooks[].matchers`**: Agent types that trigger this hook. SubagentStart fires for `general-purpose` agents; SessionStart has no matcher (fires for all sessions).
 
 ### STRUCTURAL Elements
@@ -231,6 +234,7 @@ When running in a live Claude Code session without an existing `platform-declara
 - All models' `cost_ratio`
 - Hook system details (`hooks` section)
 - Concurrency constraints (`constraints` section)
+- Model-selection policy (`model_policy` section — operator intent, not a platform fact)
 
 **Introspection procedure:**
 
@@ -238,7 +242,7 @@ When running in a live Claude Code session without an existing `platform-declara
 2. Parse `<available-deferred-tools>` block to enumerate deferred tool names
 3. Call `ToolSearch` to fetch full schemas for all deferred tools
 4. Parse system prompt for model identity, model roster, and context window
-5. Load `platform-defaults.yaml` for unobservable fields (hooks, constraints, cost ratios, other models' details)
+5. Load `platform-defaults.yaml` for unobservable fields (hooks, constraints, model_policy, cost ratios, other models' details)
 6. Merge: introspected values override defaults for observable fields
 7. Write `platform-declaration.yaml` with `introspection_coverage` block embedded (this block will be carried into `_meta` by Step 00's declaration mode). The output file must begin with:
     ```yaml
@@ -282,6 +286,7 @@ After producing `platform-snapshot.yaml`, verify:
 - [ ] `platform.hooks` section present with SubagentStart and SessionStart entries
 - [ ] Each hook entry has `point`, `capabilities`, and `matchers` fields
 - [ ] `platform.constraints` section present with `max_concurrent_agents` and `max_concurrent_agents_type`
+- [ ] `platform.model_policy` section present with `min_model_tier` (one of `routine`, `implementation`, `reasoning`)
 
 ### Mode Verification
 - [ ] **Declaration mode**: If `platform-declaration.yaml` was present (hand-authored or introspection-produced), snapshot content reflects it (not just defaults)
