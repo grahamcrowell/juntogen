@@ -20,8 +20,8 @@
 #
 # See: M16-derivation-architecture.md §3 for schema definition and field semantics.
 
-version: "2.1.0"
-version_date: "2026-07-08"
+version: "2.2.0"
+version_date: "2026-07-29"
 description: "Claude Code platform defaults — claude-fable-5 / claude-opus-4-8[1m] / claude-sonnet-5 generation, high effort"
 
 platform:
@@ -150,6 +150,24 @@ platform:
       max_output_tokens: 128000
       cost_ratio: 2.0
       effort: "high"
+
+  # --- Model selection policy (operator-tunable) ---
+  model_policy:
+    # Minimum-model floor. No spawn runs below this tier: a spawn whose
+    # function rule or per-role default resolves to a lower tier is raised to
+    # the floor. Function rules and role defaults may still escalate ABOVE the
+    # floor; the floor only sets a lower bound - it never lowers a selection.
+    # Values are tier names (matching models[].tier above); ordering is
+    # routine < implementation < reasoning:
+    #   routine        = no floor (default; current per-spawn selection stands)
+    #   implementation = bump routine spawns (Phase-1 analysts, docs-only /
+    #                    bounded lenses, Technical Writer default) up to
+    #                    implementation; implementation/reasoning spawns unchanged
+    #   reasoning      = every spawn runs on the reasoning tier (max capability,
+    #                    max cost)
+    # Applied by the manager at model-selection time; see
+    # reference/execution-protocol.md § Model Selection > Minimum-Model Floor.
+    min_model_tier: "routine"
 
   hooks:
     - point: "SubagentStart"
