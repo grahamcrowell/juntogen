@@ -492,26 +492,36 @@ cat /tmp/banner.err   # → OpenJunto v<version> active — OpenJunto coordinati
 - Claude Code session active with OpenJunto loaded
 
 **Steps**:
-1. Submit request requiring multiple sub-agent spawns of varying complexity:
-   - Routine doc update (sonnet candidate)
-   - Implementation with clear spec (opus[1m] candidate)
-   - Novel architectural decision (fable candidate)
-2. Observe Task tool spawn parameters
+1. Submit a request requiring multiple sub-agent spawns of varying cognitive demand:
+   - Routine doc update ({tier-routine})
+   - Implementation with clear spec ({tier-implementation})
+   - Novel architectural decision ({tier-reasoning})
+2. Observe Task tool spawn parameters and the session effort setting
 
 **Expected Results**:
 
 **Model Parameter Usage**:
-- [ ] Manager sets `model` parameter on Task tool spawns
-- [ ] Routine task: `model: "sonnet"`
-- [ ] Implementation task: `model: "opus[1m]"`
-- [ ] Architectural task: `model: "fable"`
-- [ ] If uncertain, manager uses more capable model (opus[1m] > sonnet, fable > opus[1m])
+- [ ] Manager sets `model` explicitly on EVERY Task tool spawn (never relies on inheritance)
+- [ ] Every spawn carries the SAME model: `platform.model_policy.default_model`
+- [ ] No spawn names a model absent from `platform.models`, or one listed in `denied_models`
+
+**Effort Application** (this platform binds effort per session, not per spawn):
+- [ ] Manager sets session effort at triage from `platform.engagement_effort`:
+      Simple -> `high`, Moderate -> `xhigh`, Complex -> `max`
+- [ ] Manager RAISES session effort if triage re-classifies the engagement upward mid-run
+- [ ] Manager does NOT claim to set effort per spawn, and does not pass an effort
+      argument to the Task tool - there is no such parameter. Naming an effort level
+      in a spawn prompt is documentation of intent, not enforcement.
+
+**Negative check**:
+- [ ] With effort at `xhigh` or `max`, thinking is NOT disabled (the API rejects that
+      combination; see `platform.constraints.thinking_disable_max_effort`)
 
 **Sub-Agent Behavior**:
-- [ ] Sub-agents execute with assigned model (verify via output characteristics or explicit model mention)
-- [ ] Task quality matches model capability (sonnet for simple, fable for complex)
+- [ ] Sub-agents execute on the assigned model
+- [ ] Depth of reasoning tracks the engagement tier, not the individual spawn
 
-**Pass Criteria**: Manager selects appropriate model for each task, uses more capable model when uncertain, tasks complete successfully.
+**Pass Criteria**: every spawn carries the same model explicitly; session effort matches the engagement tier; the manager makes no claim of per-spawn effort control.
 
 ---
 

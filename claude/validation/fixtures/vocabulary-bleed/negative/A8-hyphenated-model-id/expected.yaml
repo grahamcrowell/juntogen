@@ -1,0 +1,14 @@
+# Regression guard for the hyphen-boundary gap in the concrete-model-id sweep.
+#
+# The boundary class used to be [^a-zA-Z0-9_-], which INCLUDED the hyphen in the
+# set of characters that may not neighbour a match. Because every canonical API
+# id is hyphenated (claude-opus-5, claude-sonnet-5, claude-fable-5), the guard
+# saw a hyphen on both sides and declined to match - so the exact strings the
+# sweep exists to catch were the ones that escaped it. Only bare terms
+# ("use opus here") and bracket-alias forms ("opus[1m]") were ever caught.
+#
+# This fixture fails if the hyphen is ever put back into the exclusion class.
+exit_code: 1
+must_contain_stderr:
+  - "banned-term-bleed"
+  - "(haiku|sonnet|opus|fable|mythos)"

@@ -283,7 +283,10 @@ echo ""
 # =============================================================================
 info "Assertion 8: Model entry required fields"
 
-REQUIRED_MODEL_FIELDS=("id" "api_id" "tier" "context_window" "cost_ratio" "max_output_tokens")
+# No "tier": tiers bind to effort levels, not to models (see effort_tiers).
+# No "cost_ratio": replaced by absolute prices - with one default model a
+# between-model ratio is no longer the operative cost lever.
+REQUIRED_MODEL_FIELDS=("id" "api_id" "context_window" "max_output_tokens" "input_price_per_mtok" "output_price_per_mtok")
 
 for field in "${REQUIRED_MODEL_FIELDS[@]}"; do
     if $HAS_YQ; then
@@ -422,6 +425,90 @@ if [[ "$HAS_AGENT" -ge 1 ]]; then
     pass "platform.tools: Agent entry present"
 else
     fail "platform.tools: Agent entry missing (tool may still be listed as 'Task' — update to platform name 'Agent')"
+fi
+echo ""
+
+info "Assertion 14: Effort ladder and tier bindings"
+
+if $HAS_YQ; then
+    for tier in routine implementation reasoning; do
+        EFF=$(yq eval "[.platform.effort_tiers[] | select(.tier == \"${tier}\")] | .[0].effort" "$TARGET_FILE" 2>/dev/null)
+        if [[ -n "$EFF" && "$EFF" != "null" ]]; then
+            IN_LADDER=$(yq eval "[.platform.effort_levels[] | select(. == \"${EFF}\")] | length" "$TARGET_FILE" 2>/dev/null)
+            if [[ "$IN_LADDER" -gt 0 ]]; then
+                pass "effort_tiers.${tier} -> '${EFF}' (present in effort_levels)"
+            else
+                fail "effort_tiers.${tier} -> '${EFF}' is NOT in platform.effort_levels"
+            fi
+        else
+            fail "effort_tiers: no binding for tier '${tier}'"
+        fi
+    done
+
+    # No model may carry a tier field: tiers bind to effort, not to models.
+    STRAY=$(yq eval '[.platform.models[] | select(.tier != null)] | length' "$TARGET_FILE" 2>/dev/null)
+    if [[ "$STRAY" == "0" ]]; then
+        pass "No model entry carries a stray 'tier' field"
+    else
+        fail "${STRAY} model entry/entries still carry a 'tier' field (tiers bind to effort, not models)"
+    fi
+
+    BIND=$(yq eval '.platform.effort_binding' "$TARGET_FILE" 2>/dev/null)
+    if [[ "$BIND" == "session" || "$BIND" == "per-spawn" ]]; then
+        pass "effort_binding: '${BIND}'"
+    else
+        fail "effort_binding: '${BIND}' (expected 'session' or 'per-spawn')"
+    fi
+
+    for eng in simple moderate complex; do
+        ET=$(yq eval ".platform.engagement_effort.${eng}" "$TARGET_FILE" 2>/dev/null)
+        if [[ -n "$ET" && "$ET" != "null" ]]; then
+            pass "engagement_effort.${eng} -> '${ET}'"
+        else
+            fail "engagement_effort: missing mapping for '${eng}'"
+        fi
+    done
+else
+    warn "Assertion 14: skipped (requires yq)"
+fi
+echo ""
+
+info "Assertion 15: Model policy"
+
+if $HAS_YQ; then
+    DEF=$(yq eval '.platform.model_policy.default_model' "$TARGET_FILE" 2>/dev/null)
+    KNOWN=$(yq eval "[.platform.models[] | select(.id == \"${DEF}\")] | length" "$TARGET_FILE" 2>/dev/null)
+    if [[ "$KNOWN" -gt 0 ]]; then
+        pass "model_policy.default_model: '${DEF}' resolves to a roster entry"
+    else
+        fail "model_policy.default_model: '${DEF}' is not an id in platform.models"
+    fi
+
+    # An allow/deny list is a generic knob; a NON-EMPTY value in a shipped
+    # artifact imposes one organization's procurement policy on every adopter
+    # (Axiom 7). Operators set these per project via the adopter-side override.
+    for lst in allowed_models denied_models; do
+        LEN=$(yq eval ".platform.model_policy.${lst} | length" "$TARGET_FILE" 2>/dev/null)
+        if [[ "$LEN" == "0" ]]; then
+            pass "model_policy.${lst}: empty (org policy stays adopter-side)"
+        else
+            fail "model_policy.${lst}: ${LEN} entry/entries - a shipped artifact MUST leave this empty (Axiom 7)"
+        fi
+    done
+
+    FLOOR=$(yq eval '.platform.model_policy.min_effort_tier' "$TARGET_FILE" 2>/dev/null)
+    case "$FLOOR" in
+        routine|implementation|reasoning) pass "model_policy.min_effort_tier: '${FLOOR}'" ;;
+        *) fail "model_policy.min_effort_tier: '${FLOOR}' (expected routine|implementation|reasoning)" ;;
+    esac
+
+    if [[ "$(yq eval '.platform.model_policy.min_model_tier' "$TARGET_FILE" 2>/dev/null)" == "null" ]]; then
+        pass "Legacy 'min_model_tier' key absent (renamed to min_effort_tier)"
+    else
+        fail "Legacy 'min_model_tier' key still present - rename to min_effort_tier"
+    fi
+else
+    warn "Assertion 15: skipped (requires yq)"
 fi
 echo ""
 

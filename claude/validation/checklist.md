@@ -431,7 +431,8 @@ Count verification:
 - [ ] `env` object present
 - [ ] `permissions` object present with `allow`, `deny`, `defaultMode` keys
 - [ ] `hooks` object present with `SessionStart` and `SubagentStart` arrays
-- [ ] `model` field set to "opus"
+- [ ] `model` field set to the roster id in `platform.model_policy.default_model` (currently "opus")
+- [ ] `effortLevel` field present (the session effort key; the only effort control this platform exposes)
 - [ ] `attribution` object with empty `commit` and `pr` fields
 
 ### Environment Variables
@@ -573,7 +574,7 @@ Count verification:
 ### Model Selection Table
 - [ ] Exactly 3 rows: sonnet, opus[1m], fable
 - [ ] Column headers: Model, When to Use, Examples
-- [ ] Guidance: "When in doubt, use the more capable model (sonnet < opus[1m] < fable)."
+- [ ] Guidance: "When in doubt, use the higher tier." (tiers order routine < implementation < reasoning and select effort, not a model)
 
 ---
 

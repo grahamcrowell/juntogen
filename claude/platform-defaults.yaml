@@ -12,17 +12,23 @@
 # (D08–D80). See M16-derivation-architecture.md §3 for the mapping note.
 #
 # MODEL IDs: api_id strings are the values Claude Code accepts for the model
-# parameter / settings.json. `claude-sonnet-5` is Anthropic's canonical
-# identifier for Claude Sonnet 5 (short alias: `sonnet`); `claude-opus-4-8[1m]`
-# is the 1M-context alias form of claude-opus-4-8 (short alias: `opus[1m]`);
-# `claude-fable-5` is Anthropic's canonical identifier for Claude Fable 5
-# (short alias: `fable`).
+# parameter / settings.json. `claude-opus-5` is Anthropic's canonical identifier
+# for Claude Opus 5 (short alias: `opus`); `claude-sonnet-5` for Claude Sonnet 5
+# (short alias: `sonnet`); `claude-fable-5` for Claude Fable 5 (short alias:
+# `fable`). Opus 5 serves 1M context natively, so it needs no `[1m]` alias form
+# (the retired `opus[1m]` entry was the 1M alias of claude-opus-4-8).
+#
+# CAPABILITY vs POLICY: `platform.models` is a Layer 0 *capability* record - it
+# states what the platform offers, and stays factually complete. Which of those
+# models OpenJunto may actually spawn is a *policy* question, answered by
+# `platform.model_policy`. Deleting a real platform model from the roster to
+# express a policy would make the derivation input factually wrong.
 #
 # See: M16-derivation-architecture.md §3 for schema definition and field semantics.
 
-version: "2.2.0"
-version_date: "2026-07-29"
-description: "Claude Code platform defaults — claude-fable-5 / claude-opus-4-8[1m] / claude-sonnet-5 generation, high effort"
+version: "3.0.0"
+version_date: "2026-08-07"
+description: "Claude Code platform defaults - claude-opus-5 single-model default; cognitive demand expressed as effort, not model choice"
 
 platform:
   tools:
@@ -124,50 +130,110 @@ platform:
   models:
     # Symbolic id: used in derivation chains and human-readable references
     # api_id: actual string for Claude Code model parameter and settings.json
-    # cost_ratio: relative input token cost, opus[1m] = 1.0 baseline
-    #   (Sonnet 5 $3/MTok, Opus 4.8 $5/MTok, Fable 5 $10/MTok input;
-    #    Sonnet 5 intro pricing $2/MTok through 2026-08-31)
-    # effort: target effort for spawns on this model (applied session-level;
-    #   the Task tool exposes no per-spawn effort knob — see CONDUCTOR.md § Effort)
+    # input_price_per_mtok / output_price_per_mtok: USD, first-party API rates.
+    #   Replaces the former `cost_ratio` field. A ratio between models is no
+    #   longer the operative cost lever - every persona runs the same model, so
+    #   spend varies with effort, not model choice. Absolute prices are kept
+    #   because they remain true platform facts and are what an operator needs
+    #   to reason about a policy change.
+    #
+    # NOTE: no `tier` field. Tiers no longer bind to models; they bind to effort
+    #   levels (see effort_tiers below). This is the load-bearing change.
+    - id: "opus"
+      api_id: "claude-opus-5"
+      context_window: 1000000
+      max_output_tokens: 128000
+      input_price_per_mtok: 5
+      output_price_per_mtok: 25
     - id: "sonnet"
       api_id: "claude-sonnet-5"
-      tier: "routine"                 # stakeholder analysis, compact lenses, mechanical checks
       context_window: 1000000
       max_output_tokens: 128000
-      cost_ratio: 0.6
-      effort: "high"
-    - id: "opus[1m]"
-      api_id: "claude-opus-4-8[1m]"   # Claude Code 1M-context alias of claude-opus-4-8
-      tier: "implementation"
-      context_window: 1000000
-      max_output_tokens: 128000
-      cost_ratio: 1.0
-      effort: "high"
+      input_price_per_mtok: 3      # intro pricing $2/MTok through 2026-08-31
+      output_price_per_mtok: 15
     - id: "fable"
       api_id: "claude-fable-5"
-      tier: "reasoning"
       context_window: 1000000
       max_output_tokens: 128000
-      cost_ratio: 2.0
-      effort: "high"
+      input_price_per_mtok: 10
+      output_price_per_mtok: 50
 
-  # --- Model selection policy (operator-tunable) ---
+  # --- Effort ladder -------------------------------------------------------
+  # The tier vocabulary ({tier-routine} / {tier-implementation} /
+  # {tier-reasoning}) binds HERE, not to models. Cognitive demand is expressed
+  # as depth of reasoning on one model, not as a choice between models.
+  #
+  # `max` is Claude-specific: the Codex target's ladder tops out at `xhigh`.
+  # That is exactly why the spec corpus names tiers rather than effort literals.
+  effort_levels: ["low", "medium", "high", "xhigh", "max"]
+  effort_tiers:
+    - tier: "routine"
+      effort: "high"
+    - tier: "implementation"
+      effort: "xhigh"
+    - tier: "reasoning"
+      effort: "max"
+
+  # --- Effort binding site (a platform capability, not a policy) ------------
+  # "session"  = platform exposes no per-spawn effort knob; effort is set once
+  #              per session and therefore keys off ENGAGEMENT tier.
+  # "per-spawn" = platform accepts an effort argument on the spawn call, so the
+  #              function-first rules select effort per spawn.
+  # Claude Code is "session": the Agent (Task) tool's parameters are
+  # description / model / subagent_type / prompt / plan_mode_required - there is
+  # no effort argument. Session effort is the settings.json `effortLevel` key
+  # (equivalently the user's /effort setting).
+  # Contrast: juntogen/codex/platform-defaults.yaml is "per-spawn" - its
+  # subagents tool takes `model_reasoning_effort`.
+  effort_binding: "session"
+  session_effort_key: "effortLevel"
+
+  # Engagement tier -> effort tier. Consulted only when effort_binding=="session".
+  engagement_effort:
+    simple: "routine"
+    moderate: "implementation"
+    complex: "reasoning"
+
+  # --- Model policy -------------------------------------------------------
+  # GENERATION-TIME INPUT, not a runtime switch. Nothing dereferences this YAML
+  # while a session runs; it is read when the plugin tree is generated, and the
+  # resulting prose in reference/execution-protocol.md is the behavioral
+  # surface. An adopter editing the installed copy changes nothing, and the
+  # installed copy is a read-only marketplace cache that /plugin replaces on
+  # upgrade. To change policy on an installed plugin, use the adopter-side
+  # override (see ADOPTER OVERRIDE below), not this file.
   model_policy:
-    # Minimum-model floor. No spawn runs below this tier: a spawn whose
-    # function rule or per-role default resolves to a lower tier is raised to
-    # the floor. Function rules and role defaults may still escalate ABOVE the
-    # floor; the floor only sets a lower bound - it never lowers a selection.
-    # Values are tier names (matching models[].tier above); ordering is
-    # routine < implementation < reasoning:
-    #   routine        = no floor (default; current per-spawn selection stands)
-    #   implementation = bump routine spawns (Phase-1 analysts, docs-only /
-    #                    bounded lenses, Technical Writer default) up to
-    #                    implementation; implementation/reasoning spawns unchanged
-    #   reasoning      = every spawn runs on the reasoning tier (max capability,
-    #                    max cost)
-    # Applied by the manager at model-selection time; see
-    # reference/execution-protocol.md § Model Selection > Minimum-Model Floor.
-    min_model_tier: "routine"
+    # The model every persona runs on. One model for all roles: cognitive
+    # demand is expressed as effort, not as a choice between models.
+    default_model: "opus"
+
+    # Optional org policy over platform.models. Both EMPTY by default and MUST
+    # ship empty: this file is part of a general artifact installed by third
+    # parties, and naming a model here would impose one organization's
+    # procurement policy on every adopter (Axiom 7 - no org-specific content in
+    # core files). Having the knob is generic; filling it in is org-specific.
+    #   allowed_models - if non-empty, an allowlist; only these may be spawned.
+    #   denied_models  - never spawned, even if named as default_model.
+    # A model denied here stays in platform.models: the roster records platform
+    # capability, this records permission.
+    #
+    # ADOPTER OVERRIDE: an operator sets these per-project without editing the
+    # installed plugin, via `<root>/.claude/oj-model-policy.env`, resolved by
+    # `oj-helper model-policy`. Same pattern as the existing per-key path
+    # overrides in `<root>/.claude/oj-paths.env` (see oj-helper resolve-path).
+    # Example, for an org whose procurement has not cleared Fable:
+    #   denied_models=claude-fable-5
+    allowed_models: []
+    denied_models: []
+
+    # Minimum-effort floor. Applied as the LAST step of effort selection: a
+    # resolved tier below the floor is raised to it; at or above, unchanged.
+    # Lower bound only - never lowers a selection, so escalations still stand.
+    # Ordering is routine < implementation < reasoning. `routine` is the
+    # identity case (nothing is bumped).
+    # Renamed from `min_model_tier`: with one model the floor can no longer
+    # raise capability, only depth of reasoning. Same shape, honest name.
+    min_effort_tier: "routine"
 
   hooks:
     - point: "SubagentStart"
@@ -185,3 +251,12 @@ platform:
     max_concurrent_agents: 5
     # "configured" = tunable recommendation; "hard" = platform-enforced ceiling
     max_concurrent_agents_type: "configured"
+
+    # Thinking cannot be disabled above `high` effort on claude-opus-5: pairing
+    # `thinking: {type: "disabled"}` with xhigh or max returns HTTP 400.
+    # This is load-bearing here, not trivia. Moderate engagements run at xhigh
+    # and Complex at max, so an operator who disables thinking hard-fails every
+    # Moderate and Complex engagement. Thinking is ON by default on Opus 5
+    # (omitting the parameter runs adaptive), so the default path is safe - the
+    # failure only appears if someone opts out explicitly.
+    thinking_disable_max_effort: "high"

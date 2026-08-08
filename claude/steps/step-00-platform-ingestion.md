@@ -58,7 +58,8 @@ _meta:
     models_roster: "partial"          # other models' IDs from system prompt; details from defaults
     hooks: "none"                     # not visible in system prompt; from defaults
     constraints: "none"               # not visible in system prompt; from defaults
-    cost_ratios: "none"               # not in system prompt; from defaults
+    prices: "none"                    # not in system prompt; from defaults
+    effort_binding: "none"            # not in system prompt; from defaults
 
 platform:
   tools:
@@ -139,29 +140,46 @@ platform:
       available: conditional   # available in direct sessions; not in team sub-agent context
       parameters: ["questions", "answers", "annotations", "metadata"]  # confirmed: ToolSearch schema (2026-04-08); primary param is "questions" (array of question objects)
   models:
+    # Capability record: what the platform offers. No `tier` field - tiers bind
+    # to effort (below), not to models. Stays factually complete regardless of
+    # which models policy permits.
+    - id: "opus"
+      api_id: "claude-opus-5"
+      context_window: 1000000
+      max_output_tokens: 128000
+      input_price_per_mtok: 5
+      output_price_per_mtok: 25
     - id: "sonnet"
       api_id: "claude-sonnet-5"
-      tier: "routine"
       context_window: 1000000
       max_output_tokens: 128000
-      cost_ratio: 0.6   # relative input token cost; opus[1m] = 1.0 baseline
-      effort: "high"
-    - id: "opus[1m]"
-      api_id: "claude-opus-4-8[1m]"
-      tier: "implementation"
-      context_window: 1000000
-      max_output_tokens: 128000
-      cost_ratio: 1.0   # baseline
-      effort: "high"
+      input_price_per_mtok: 3
+      output_price_per_mtok: 15
     - id: "fable"
       api_id: "claude-fable-5"
-      tier: "reasoning"
-      context_window: 1000000   # confirmed: system prompt states "1M context"
+      context_window: 1000000
       max_output_tokens: 128000
-      cost_ratio: 2.0
+      input_price_per_mtok: 10
+      output_price_per_mtok: 50
+  effort_levels: ["low", "medium", "high", "xhigh", "max"]
+  effort_tiers:
+    - tier: "routine"
       effort: "high"
+    - tier: "implementation"
+      effort: "xhigh"
+    - tier: "reasoning"
+      effort: "max"
+  effort_binding: "session"   # Claude Code has no per-spawn effort argument
+  session_effort_key: "effortLevel"
+  engagement_effort:
+    simple: "routine"
+    moderate: "implementation"
+    complex: "reasoning"
   model_policy:
-    min_model_tier: "routine"   # minimum-model floor; see Schema Field Notes
+    default_model: "opus"
+    allowed_models: []          # MUST ship empty; see Schema Field Notes
+    denied_models: []           # MUST ship empty; see Schema Field Notes
+    min_effort_tier: "routine"  # minimum-effort floor; see Schema Field Notes
   hooks:
     - point: "SubagentStart"
       capabilities: ["modify_prompt", "add_context"]
@@ -181,10 +199,15 @@ platform:
 - **`tools[].available`**: `true` for unconditionally available tools; `conditional` for tools available only in specific contexts (e.g., `AskUserQuestion` is not available in team sub-agent sessions).
 - **`models[].api_id`**: The actual string used in Claude Code's `model` parameter and `settings.json`. Distinct from the symbolic `id` used in derivation chains and human-readable references. Downstream prompts (step-09) use `api_id` when generating `settings.json`.
 - **`models[].max_output_tokens`**: Maximum output tokens per response for this model. Used by derivation chains that need to account for output length constraints (e.g., compact profile sizing, reference file budget). These are [EXTERNAL] platform facts — update when model limits change.
-- **`models[].cost_ratio`**: Relative input token cost with opus[1m] (the implementation tier) as 1.0 baseline. Used by Chain 7 (model selection) and Chain 6 (stakeholder escalation). Not an absolute price — update when relative costs shift significantly.
+- **`models[].input_price_per_mtok` / `output_price_per_mtok`**: USD per million tokens, first-party API rates. Replaces the former `cost_ratio` field. A ratio between models is no longer the operative lever: every persona runs one model, so spend varies with effort rather than model choice. Absolute prices are kept because they stay true platform facts and are what an operator needs in order to reason about a policy change.
+- **`effort_tiers`**: Binds each cognitive-demand tier to an effort level. This is where the tier vocabulary resolves; it no longer resolves against `models[]`. Used by Chain 7 (effort selection).
+- **`effort_binding`**: `per-spawn` if the platform accepts an effort argument on the spawn call, `session` if effort can only be set once per session. A platform capability, not operator intent. Claude Code is `session`: the Agent tool takes no effort argument. Determines whether the function-first rules select effort per spawn or whether `engagement_effort` keys it off engagement tier.
+- **`engagement_effort`**: Engagement tier to effort tier. Consulted only when `effort_binding == "session"`.
 - **`_meta.introspection_coverage`**: Present when `mode=declaration` and the declaration was produced by the introspection sub-step. Per-category markers (`full`, `partial`, `none`) documenting which fields were observed from the live session vs. filled from defaults. Enables downstream consumers to assess confidence in platform facts.
 - **`constraints.max_concurrent_agents_type`**: `configured` means the value is a tunable recommendation, not a hard platform ceiling. Derivation chains that use this value should apply it differently depending on type.
-- **`model_policy.min_model_tier`**: Operator-set minimum-model floor — the lowest tier any spawn may run on (`routine` | `implementation` | `reasoning`; ordering `routine < implementation < reasoning`; default `routine` = no floor). Used by Chain 7 (model selection): after function rules and role defaults resolve a tier, a below-floor tier is raised to the floor and an at-or-above tier is left unchanged (lower bound only — never lowers a selection). This is operator intent, not an observable platform fact — it is always filled from defaults, never from introspection.
+- **`model_policy.default_model`**: The model every persona runs on. One model for all roles; cognitive demand is expressed as effort.
+- **`model_policy.allowed_models` / `denied_models`**: Optional org policy over the roster. Both MUST be emitted EMPTY. The generated tree is a general artifact installed by third parties, so naming a model here would impose one organization's procurement policy on every adopter (Axiom 7 - no org-specific content in core files). Having the knob is generic; filling it in is org-specific. An operator sets them per project via the adopter-side override, not by editing the generated file.
+- **`model_policy.min_effort_tier`**: Operator-set minimum-effort floor - the lowest tier any spawn may run at (`routine` | `implementation` | `reasoning`; ordering `routine < implementation < reasoning`; default `routine` = no floor). Used by Chain 7 (effort selection): after function rules and role defaults resolve a tier, a below-floor tier is raised to the floor and an at-or-above tier is left unchanged (lower bound only - never lowers a selection). Renamed from `min_model_tier`: with one model a floor cannot raise capability, only reasoning depth. This is operator intent, not an observable platform fact - always filled from defaults, never from introspection.
 - **`hooks[].matchers`**: Agent types that trigger this hook. SubagentStart fires for `general-purpose` agents; SessionStart has no matcher (fires for all sessions).
 
 ### STRUCTURAL Elements
@@ -226,12 +249,13 @@ When running in a live Claude Code session without an existing `platform-declara
 
 1. **Tools (full)**: Parse the system prompt tool definitions. Each tool's name and complete parameter list (from JSONSchema `required` and `properties` fields) are directly available. Deferred tools (listed in `<available-deferred-tools>` blocks) are enumerated by name, then their full schemas are fetched via `ToolSearch` before emitting.
 2. **Own model identity (full)**: The system prompt contains the running model's name, model ID, and context window (e.g., "You are powered by the model named Opus 4.8. The exact model ID is claude-opus-4-8.").
-3. **Model roster (partial)**: Other model family IDs are listed in the system prompt (e.g., "Sonnet 5: 'claude-sonnet-5'"). However, their context windows, output limits, and cost ratios are NOT stated — these fields fall back to `platform-defaults.yaml`.
+3. **Model roster (partial)**: Other model family IDs are listed in the system prompt (e.g., "Sonnet 5: 'claude-sonnet-5'"). However, their context windows, output limits, and prices are NOT stated — these fields fall back to `platform-defaults.yaml`.
 
 **What introspection CANNOT observe (filled from defaults):**
 
 - Other models' `context_window` and `max_output_tokens`
-- All models' `cost_ratio`
+- All models' prices
+- `effort_tiers`, `effort_binding`, `engagement_effort`
 - Hook system details (`hooks` section)
 - Concurrency constraints (`constraints` section)
 - Model-selection policy (`model_policy` section — operator intent, not a platform fact)
@@ -242,7 +266,7 @@ When running in a live Claude Code session without an existing `platform-declara
 2. Parse `<available-deferred-tools>` block to enumerate deferred tool names
 3. Call `ToolSearch` to fetch full schemas for all deferred tools
 4. Parse system prompt for model identity, model roster, and context window
-5. Load `platform-defaults.yaml` for unobservable fields (hooks, constraints, model_policy, cost ratios, other models' details)
+5. Load `platform-defaults.yaml` for unobservable fields (hooks, constraints, model_policy, effort binding and tiers, prices, other models' details)
 6. Merge: introspected values override defaults for observable fields
 7. Write `platform-declaration.yaml` with `introspection_coverage` block embedded (this block will be carried into `_meta` by Step 00's declaration mode). The output file must begin with:
     ```yaml
@@ -281,12 +305,17 @@ After producing `platform-snapshot.yaml`, verify:
 - [ ] `platform.tools` section present with at least 20 tool entries
 - [ ] Each tool entry has `name`, `available`, and `parameters` fields
 - [ ] `platform.models` section present with exactly 3 entries (sonnet, opus[1m], fable)
-- [ ] Each model entry has `id`, `api_id`, `tier`, `context_window`, `max_output_tokens`, `cost_ratio`, and `effort` fields
+- [ ] Each model entry has `id`, `api_id`, `context_window`, `max_output_tokens`, `input_price_per_mtok`, and `output_price_per_mtok` fields
+- [ ] No model entry carries a `tier` field (tiers bind to effort, not to models)
+- [ ] `platform.effort_tiers` maps each of `routine`, `implementation`, `reasoning` to a value present in `platform.effort_levels`
+- [ ] `platform.effort_binding` is one of `per-spawn`, `session`
+- [ ] `platform.engagement_effort` maps each of `simple`, `moderate`, `complex` to a tier name
 - [ ] `api_id` fields contain actual API model strings (not symbolic ids)
 - [ ] `platform.hooks` section present with SubagentStart and SessionStart entries
 - [ ] Each hook entry has `point`, `capabilities`, and `matchers` fields
 - [ ] `platform.constraints` section present with `max_concurrent_agents` and `max_concurrent_agents_type`
-- [ ] `platform.model_policy` section present with `min_model_tier` (one of `routine`, `implementation`, `reasoning`)
+- [ ] `platform.model_policy` present with `default_model`, `allowed_models`, `denied_models`, and `min_effort_tier` (one of `routine`, `implementation`, `reasoning`)
+- [ ] `allowed_models` and `denied_models` are both EMPTY lists (a non-empty value would ship one org's policy to every adopter)
 
 ### Mode Verification
 - [ ] **Declaration mode**: If `platform-declaration.yaml` was present (hand-authored or introspection-produced), snapshot content reflects it (not just defaults)
