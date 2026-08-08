@@ -74,7 +74,7 @@ die_usage() { echo "ERROR: $*" >&2; exit 2; }
 
 ### Subcommand Functions
 
-Implement these subcommands (in order). The list below enumerates ALL 15 subcommands; the generated `oj-helper` MUST implement every one. Each subcommand listed here corresponds to exactly one `^cmd_NAME(` function definition AND one case-branch in the dispatcher. The static-emitted `hooks/hooks.json` wires three of these (`inject-profile`, `conductor-inject`, `migrate-legacy`) as hook commands — if any of the three is missing from the generated helper, SessionStart/SubagentStart hooks will fire and exit with "Unknown subcommand", silently breaking the plugin at runtime.
+Implement these subcommands (in order). The list below enumerates ALL 16 subcommands; the generated `oj-helper` MUST implement every one. Each subcommand listed here corresponds to exactly one `^cmd_NAME(` function definition AND one case-branch in the dispatcher. The static-emitted `hooks/hooks.json` wires three of these (`inject-profile`, `conductor-inject`, `migrate-legacy`) as hook commands — if any of the three is missing from the generated helper, SessionStart/SubagentStart hooks will fire and exit with "Unknown subcommand", silently breaking the plugin at runtime.
 
 **MANDATORY enumeration (15 specced functions)**:
 
@@ -94,7 +94,7 @@ Implement these subcommands (in order). The list below enumerates ALL 15 subcomm
 14. `cmd_install_hooks`         — opt-in .githooks installer (§14)
 15. `cmd_resolve_path`          — canonical state-path resolver (§15)
 
-> **Enumeration is exact again.** All 15 shipped `^cmd_` subcommands are now specced here - `install-hooks` and `resolve-path` were promoted from hand-cuts into §14 and §15, closing the former enumeration gap. The generated helper therefore contains exactly 15 `^cmd_` functions, so `grep -cE "^cmd_" bin/oj-helper` MUST return `15`; the exact-count invariant is valid again. A regen MUST implement every one; none may be dropped to hit a count.
+> **Enumeration is exact again.** All 16 shipped `^cmd_` subcommands are specced here - `install-hooks` and `resolve-path` were promoted from hand-cuts into §14 and §15, and `model-policy` was added as §16. The generated helper therefore contains exactly 16 `^cmd_` functions, so `grep -cE "^cmd_" bin/oj-helper` MUST return `16`; the exact-count invariant is valid. A regen MUST implement every one; none may be dropped to hit a count.
 
 #### 1. inject-profile — SubagentStart Hook
 
@@ -551,3 +551,29 @@ After generation, verify the script:
 - **Step 04** (reference files) must be complete — inject-profile references profile paths
 - **Step 05** (templates) must be complete — feedback file format matches template structure
 - **Step 06** (commands) must be complete — commands invoke oj-helper subcommands
+
+---
+
+## § 16 — `model-policy`
+
+Echo the **effective** model policy as a single JSON object on stdout.
+
+```
+oj-helper model-policy [--workspace PATH]
+oj-helper model-policy --check <api-id> [--workspace PATH]
+```
+
+**Why this subcommand exists.** `platform.model_policy` in `platform-defaults.yaml` is a *generation-time* input: nothing dereferences that YAML while a session runs, and the installed copy is a read-only marketplace cache that `/plugin` replaces on upgrade. So the file cannot be where an operator expresses policy. This subcommand is the runtime read path, and `<root>/.claude/oj-model-policy.env` is the write path - in the adopter's own repo, surviving upgrades.
+
+**Why the shipped lists are empty.** The generated `platform-defaults.yaml` MUST emit `allowed_models: []` and `denied_models: []`. The plugin is installed by third parties; naming a model in the shipped defaults would impose one organization's procurement policy on every adopter, which Axiom 7 forbids. The knob is generic - every org has some model policy - but any value in it is org-specific. Generation MUST NOT bake a non-empty list in, and step-00's checklist asserts the lists are empty.
+
+**Resolution order** (identical in shape to §15 `resolve-path`):
+1. Workspace root from `--workspace`, else `$OJ_STATE_ROOT` (tolerating a trailing `/.claude` or `/.claude/local`), else the nearest ancestor containing `.claude/`, else `$PWD`.
+2. Shipped defaults: `default_model=opus`, empty allow/deny lists, `min_effort_tier=routine`. These are literals in the script, deliberately NOT parsed from the YAML - parsing it would imply a runtime dereference that does not happen.
+3. `<root>/.claude/oj-model-policy.env`, if present, overrides any of `default_model`, `allowed_models`, `denied_models`, `min_effort_tier`. Comma-separated lists. Last assignment wins, matching `resolve-path`'s `tail -n1` behavior.
+
+**Output**: `{"default_model":..., "allowed_models":[...], "denied_models":[...], "min_effort_tier":..., "source":...}` where `source` is `plugin-defaults` or the absolute override path, so a caller can tell whether policy was configured or defaulted.
+
+**`--check <api-id>`**: exits `0` when the model is permitted, `1` when denied, and emits `{"model":..., "permitted":bool, "reason":..., "source":...}`. **Denied wins over allowed** - a deny-list is a prohibition, not a preference, so a model in both lists is denied. An empty `allowed_models` means "no allowlist", not "nothing allowed".
+
+**Exit code**: the plain form always exits `0` (Axiom 8 - never block on the probe itself). Only `--check` uses a non-zero exit, and it signals a policy verdict, not a failure.
