@@ -204,6 +204,7 @@ consumers:
   "permissions": { "allow": [...], "deny": [...] },
   "hooks": { "SessionStart": [...], "SubagentStart": [...] },
   "model": "opus",
+  "effortLevel": "high",
   /* other Claude Code settings */
 }
 ```
@@ -266,9 +267,11 @@ Lifecycle hooks called by Claude Code at specific events.
 
 #### Other Settings
 
-- `model: "opus"` — Default model for manager (sub-agents can override via Task tool's `model` parameter)
+- `model: "opus"` - the model everything runs on. This is `platform.model_policy.default_model`; sub-agents set the same value explicitly on every spawn rather than relying on inheritance, so a spawn that omits it is a defect, not a shortcut.
 - `alwaysThinkingEnabled: true` — Enable thinking process visibility
-- `effortLevel: "high"` — Request thorough responses
+- `effortLevel: "high"` - the session effort setting, and the ONLY effort control this platform exposes (`platform.session_effort_key`). Because `platform.effort_binding` is `session` here, this key is where cognitive-demand tiers actually land: the manager raises it at triage per `platform.engagement_effort` - `high` for Simple, `xhigh` for Moderate, `max` for Complex. The value above is the Simple-tier default, not a ceiling.
+
+  Do not pair a disabled-thinking setting with `xhigh` or `max`: `platform.constraints.thinking_disable_max_effort` records that the combination is rejected by the API, which would break every Moderate and Complex engagement. Thinking is on by default, so this only bites an explicit opt-out.
 - `attribution.commit: ""` — No AI attribution in commits (enforced by protocol + empty string here)
 - `attribution.pr: ""` — No AI attribution in PRs
 

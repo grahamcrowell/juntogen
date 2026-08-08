@@ -192,7 +192,7 @@ The following EXACT elements are NO LONGER emitted into CONDUCTOR. They render i
 - **Spawn Formats (Moderate Tier)**: Phase 1 `<!-- oj-expert: [profile-filename] -->` marker + stakeholder analysis; Phase 2 lead implementation with synthesized findings; Phase 3 adversarial review with failure-mode testing.
 - **Handback Formats**: Simple compressed (anchor line `Compressed format (~5 lines):` + 5-field block) and Moderate/Complex full (anchor line `Full format (9 fields):` + 9-field block). Both anchor lines are [EXACT] and are validated in the reference file, not in CONDUCTOR.
 - **Quality Gate Counts**: Simple 2 items, Moderate 6 items, Complex 9 items.
-- **Model Selection Section**: the [EXTERNAL] tier table from `platform-snapshot.yaml`, the function-first selection rules (5 bullets), the per-role default model table, the worked-example anchors, and the effort-out-of-scope note.
+- **Model and Effort Selection Section**: the [EXTERNAL] tier table from `platform-snapshot.yaml` (cognitive-demand classes; no cost-ratio column), the effort-binding-site note derived from `platform.effort_binding`, the function-first selection rules (5 bullets), the per-role default tier table, the worked-example anchors, and the effort-application note.
 
 step-04 § execution-protocol.md is the authoritative generation note for all of the above.
 

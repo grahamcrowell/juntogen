@@ -25,7 +25,7 @@ banned_terms:
     kind: "literal"
     scope: "core-spec-corpus"
     exempt_regions: ["m16-section-3", "d08-verbatim-blocks"]
-  - term: "(^|[^a-zA-Z0-9_-])(haiku|sonnet|opus)([^a-zA-Z0-9_-]|$)"
+  - term: "(^|[^a-zA-Z0-9_])(haiku|sonnet|opus|fable|mythos)([^a-zA-Z0-9_]|$)"
     kind: "regex"
     scope: "core-spec-corpus"
     exempt_regions: ["m16-section-3", "d08-verbatim-blocks"]
