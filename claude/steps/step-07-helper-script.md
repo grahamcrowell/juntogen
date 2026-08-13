@@ -74,7 +74,7 @@ die_usage() { echo "ERROR: $*" >&2; exit 2; }
 
 ### Subcommand Functions
 
-Implement these subcommands (in order). The list below enumerates ALL 16 subcommands; the generated `oj-helper` MUST implement every one. Each subcommand listed here corresponds to exactly one `^cmd_NAME(` function definition AND one case-branch in the dispatcher. The static-emitted `hooks/hooks.json` wires three of these (`inject-profile`, `conductor-inject`, `migrate-legacy`) as hook commands — if any of the three is missing from the generated helper, SessionStart/SubagentStart hooks will fire and exit with "Unknown subcommand", silently breaking the plugin at runtime.
+Implement these subcommands (in order). The list below enumerates ALL 18 subcommands; the generated `oj-helper` MUST implement every one. Each subcommand listed here corresponds to exactly one `^cmd_NAME(` function definition AND one case-branch in the dispatcher. The static-emitted `hooks/hooks.json` wires three of these (`inject-profile`, `conductor-inject`, `migrate-legacy`) as hook commands — if any of the three is missing from the generated helper, SessionStart/SubagentStart hooks will fire and exit with "Unknown subcommand", silently breaking the plugin at runtime.
 
 **MANDATORY enumeration (15 specced functions)**:
 
@@ -93,8 +93,11 @@ Implement these subcommands (in order). The list below enumerates ALL 16 subcomm
 13. `cmd_workstream_new`        — scaffold a parallel-workstream directory (§13)
 14. `cmd_install_hooks`         — opt-in .githooks installer (§14)
 15. `cmd_resolve_path`          — canonical state-path resolver (§15)
+16. `cmd_model_policy`          — effective model policy as JSON (§16)
+17. `cmd_backlog_list`          — enumerate every backlog file (§17)
+18. `cmd_backlog_lint`          — backlog structural integrity checks (§18)
 
-> **Enumeration is exact again.** All 16 shipped `^cmd_` subcommands are specced here - `install-hooks` and `resolve-path` were promoted from hand-cuts into §14 and §15, and `model-policy` was added as §16. The generated helper therefore contains exactly 16 `^cmd_` functions, so `grep -cE "^cmd_" bin/oj-helper` MUST return `16`; the exact-count invariant is valid. A regen MUST implement every one; none may be dropped to hit a count.
+> **Enumeration is exact again.** All 18 shipped `^cmd_` subcommands are specced here - `install-hooks` and `resolve-path` were promoted from hand-cuts into §14 and §15, `model-policy` was added as §16, and the plural-backlog pair `backlog-list` / `backlog-lint` as §17 and §18. The generated helper therefore contains exactly 18 `^cmd_` functions, so `grep -cE "^cmd_" bin/oj-helper` MUST return `18`; the exact-count invariant is valid. A regen MUST implement every one; none may be dropped to hit a count.
 
 #### 1. inject-profile — SubagentStart Hook
 
@@ -385,7 +388,14 @@ cmd_agent_teams_check() {
 1. **Argument parsing**: positional `WSID` (required) and `REPO` (required), optional positional `BRANCH` (default `<wsid>`), and flag `--workspace <path>`. The FOUR usage-error paths - missing WSID, missing REPO, an unknown `--flag`, and an unexpected extra positional - MUST exit `2` via `die_usage` (NOT `die`), so a usage error is distinguishable from a driver error by exit code.
 2. **Workspace resolution** (helper `_workstream_resolve_workspace`, in order): (a) explicit `--workspace <path>` (must exist); (b) `$OJ_STATE_ROOT` env var as the workspace root, tolerating and stripping a trailing `/.claude/local` or `/.claude` suffix, when `<root>/.claude/state/session.md` exists (lets a SessionStart hook pin the canonical workspace regardless of `$PWD`); (c) `$PWD` if `$PWD/.claude/state/session.md` exists; (d) walk up from `$PWD` to the first ancestor containing `.claude/state/session.md`. This is a driver error: `die` (exit 1, NOT `die_usage`) with an actionable message if none resolves. The helper's own `--workspace path does not exist` case is likewise a driver error (exit 1 via `die`).
 3. **Repo validation**: driver error - `die` (exit 1) if `<workspace>/<repo>` is not a directory or is not a git repo (`.git` absent).
-4. **Scaffold**: create `<workspace>/.workstreams/<wsid>/.claude/`; symlink the canonical shared-state paths into it (`state/session.md` required, `BACKLOG.md` required, `artifacts` optional) via a link helper that backs up any pre-existing real file with a timestamp suffix before replacing it with a symlink, and is idempotent (a correct existing symlink is left as "already linked"); create a git worktree of `<repo>` at `./<repo>` on `<branch>`; and write a real (never-overwritten) per-workstream `.claude/CLAUDE.md` carrying the `[ws: <wsid>]` tagging directive and the don't-touch-other-workstreams rule.
+4. **Scaffold**: create `<workspace>/.workstreams/<wsid>/.claude/`; symlink the canonical shared-state paths into it via a link helper that backs up any pre-existing real file with a timestamp suffix before replacing it with a symlink, and is idempotent (a correct existing symlink is left as "already linked"); create a git worktree of `<repo>` at `./<repo>` on `<branch>`; and write a real (never-overwritten) per-workstream `.claude/CLAUDE.md` carrying the `[ws: <wsid>]` tagging directive and the don't-touch-other-workstreams rule.
+
+   The link set, in order:
+   - **`oj-paths.env`** (optional) - **MUST be linked, and linked first.** A workstream directory has its own `.claude/`, so `resolve-path`'s ancestor walk stops at the workstream rather than at the canonical workspace. Without this link, every per-key override AND the layout profile silently revert to the shipped defaults inside a workstream: the paths still resolve, just to the wrong files, which is precisely the failure mode `resolve-path` exists to prevent. A regen that drops this link reintroduces a silent-wrong-answer bug.
+   - `state/session.md` (required), `BACKLOG.md` (required), `artifacts` (optional) - the original three.
+   - **Root-level category files** (all optional): `decisions.md`, `open-questions.md`, `facts`. All optional means a `flat` workspace has none of them, each is a silent skip, and flat behavior is byte-identical to before the category keys existed. Link only the ROOT-level nodes: deeper nodes are project directories, and linking a whole taxonomy tree per workstream would be a scaffolding decision this subcommand has no basis to make.
+
+   The generated `.claude/CLAUDE.md` body MUST describe the shared state as the resolved set rather than the old literal three, tell the reader to resolve paths with `oj-helper resolve-path <key>` rather than treating those paths as literal, name the linked `oj-paths.env` as what makes resolution identical in the workstream and the canonical workspace, and extend the tagging rule to appends into shared TYPED files (e.g. `.claude/decisions.md`) - which is where concurrent workstreams collide most easily.
 5. **Idempotent**: re-running yields the same end state. `.claude/CLAUDE.md` is never overwritten; existing real state files are backed up before being linked.
 6. **Output**: a human-readable summary plus a `Next steps:` block (the `cd` / `claude` / `/rename` / `/oj:cycle` lines the skill surfaces verbatim). **Exit codes**: `0` created-or-already-present; `1` driver error via `die` (workspace unresolvable, repo missing, not a git repo); `2` usage error via `die_usage` (missing WSID, missing REPO, unknown flag, unexpected positional). The distinction is load-bearing: usage errors (2 via `die_usage`) vs driver errors (1 via `die`) MUST be routed through the matching helper so the exit code is unambiguous.
 
@@ -414,19 +424,77 @@ cmd_agent_teams_check() {
 
 **Purpose**: Echo the absolute path OpenJunto should use for a canonical state file or directory, honoring per-project layout and overrides. The skills (save-session, show-backlog, run-task, cycle) and the CONDUCTOR templates historically hardcoded `.claude/state/session.md`, `.claude/BACKLOG.md`, and `.claude/artifacts/`; a project that relocated state (via `.claude/oj-paths.env`) had no way to redirect OpenJunto without forking every skill. resolve-path centralizes the decision: a skill asks for a key, oj-helper returns the path.
 
-**Invocation**: `oj-helper resolve-path <key> [--workspace PATH]`, where `<key>` is one of `session | backlog | artifacts | state-dir | config | retros`.
+**Invocation**: `oj-helper resolve-path <key> [--workspace PATH] [--node RELPATH]`, where `<key>` is one of two families:
 
-**Reference implementation**: the `resolve-path` block in `bin/oj-helper` (the `# resolve-path` banner comment through `cmd_resolve_path`). This subcommand lives well past the first 300 lines, so read it explicitly when generating this section; its banner comment fully documents the keys, layout, and override mechanism.
+- **state keys** - `session | backlog | artifacts | state-dir | config | retros`
+- **category keys** - `decisions | facts | open-questions | requirements | design | plan`
+
+**Reference implementation**: the `resolve-path` block in `bin/oj-helper` (the `# resolve-path` banner comment through `cmd_resolve_path`, plus the `OJ_RESOLVE_PATH_*_KEYS` constants and the `_oj_paths_env_get` helper that sit between the banner and the function). This subcommand lives well past the first 300 lines, so read it explicitly when generating this section; its banner comment fully documents the keys, the layout profiles, and the override mechanism.
 
 **Critical implementation details**:
 
-1. **Argument parsing**: one positional `<key>` (required) and an optional `--workspace <path>` flag. `die` on a missing key, an unknown `--flag`, or an unexpected extra positional.
+1. **Argument parsing**: one positional `<key>` (required), plus optional `--workspace <path>` and `--node <relpath>` flags. `die` on a missing key, an unknown `--flag`, or an unexpected extra positional.
 2. **Workspace-root resolution** (root = the directory that contains `.claude/`), in order: (1) `--workspace PATH` (must exist - `die` if not); (2) `$OJ_STATE_ROOT` (set by a SessionStart hook) as the root directly, tolerating and stripping a trailing `/.claude/local` or `/.claude` suffix for compatibility with older hooks, when the stripped directory exists; (3) the nearest ancestor of `$PWD` (including `$PWD`) containing a `.claude/` directory; (4) `$PWD` as the final fallback (the ancestor walk always resolves to something, so this path never `die`s on an unresolvable workspace).
-3. **Per-key defaults** (workspace-relative; oj state lives directly under `.claude/` - there is no `.claude/local/` layout): `session` -> `.claude/state/session.md`, `backlog` -> `.claude/BACKLOG.md`, `artifacts` -> `.claude/artifacts`, `state-dir` -> `.claude/state`, `config` -> `.claude`, `retros` -> `.claude/archive/retros`. `die` on an unknown key.
-4. **Per-key override**: `<root>/.claude/oj-paths.env` may set `key=workspace-relative-path` (with `#` comments and surrounding whitespace allowed); an override wins over the default for that key. Take the last matching assignment; an override value that is itself absolute is honored as-is.
-5. **Emit and exit**: print exactly one absolute path on stdout (`$root/$rel`, or `$rel` unchanged when the resolved value is already absolute). The path is NOT created - resolve-path is pure resolution, safe to call before the file exists. Exit 0 on success; exit 1 (via `die`) on a bad key or an unresolvable workspace (in practice, only a `--workspace` path that does not exist).
+3. **Layout profile**: read `layout=` from `<root>/.claude/oj-paths.env`. Two values are valid, `flat` and `hierarchy`; absent means `flat`. Any other value is a `die` (exit 1) - a typo'd profile MUST NOT degrade silently to `flat`, because that would resolve every category key to the wrong answer without a signal. **`flat` is the default and stays the default**: OpenJunto must be able to *express* a layout it does not *impose*, so promoting one project's taxonomy to the shipped default is out of scope by construction (and would be a breaking change for every existing adopter).
+4. **Node prefix** (category keys only): `--node RELPATH` selects the owning node, defaulting to the state root `.claude`. Normalize RELPATH by stripping a leading `./`, a leading `/`, a trailing `/`, and a leading `.claude/`, so `--node proj/sub` and `--node .claude/proj/sub` name the same node; a RELPATH of exactly `.claude` means the root node. `--node` MUST be accepted-and-ignored where it does not apply (state keys, and `flat` layout) so a caller never has to branch on the active profile just to pass it.
+5. **Per-key defaults** (workspace-relative; oj state lives directly under `.claude/` - there is no `.claude/local/` layout):
+   - **State keys, both profiles** - `session` -> `.claude/state/session.md`, `backlog` -> `.claude/BACKLOG.md`, `artifacts` -> `.claude/artifacts`, `state-dir` -> `.claude/state`, `config` -> `.claude`, `retros` -> `.claude/archive/retros`. These are profile-INDEPENDENT: relocating them is an override's job, not a taxonomy's, so `hierarchy` must not silently move `session`.
+   - **Category keys under `hierarchy`** - `<node>/<key>.md`, except `facts` -> `<node>/facts` (a directory). So `decisions` -> `.claude/decisions.md`, and `design --node proj/sub` -> `.claude/proj/sub/design.md`.
+   - **Category keys under `flat`** - deliberately UNSET (see exit 3 below). A flat project has no per-type filing surface, and inventing one (`.claude/DECISIONS.md`) would aim skills at a file the project does not keep. An unset key that fails loudly beats a key that silently resolves somewhere wrong.
+   - `die` on an unknown key.
+6. **Per-key override**: `<root>/.claude/oj-paths.env` may set `key=workspace-relative-path` (with `#` comments and surrounding whitespace allowed); an override wins over the profile default for that key. Take the last matching assignment; an override value that is itself absolute is honored as-is. An override MUST also win over the `flat`-unset state, so a flat project can give a single category key a home without adopting the whole hierarchy.
+7. **Override validation**: a RELATIVE override value that does not start with `.claude/` (bare `.claude` also counts as inside the tree) resolves OUTSIDE the state tree. Emit a `WARNING:` on **stderr** naming the key, the offending value, the file, and the path it actually resolves to - then honor the value anyway. This is the easiest misconfiguration to create and the hardest to notice, and it is a warning rather than a `die` because relocating outside `.claude/` is unusual but not forbidden. An ABSOLUTE override is honored silently: leaving the tree on purpose is a supported escape, so it must not nag.
+8. **Emit and exit**: print exactly one absolute path on stdout (`$root/$rel`, or `$rel` unchanged when the resolved value is already absolute). The path is NOT created - resolve-path is pure resolution, safe to call before the file exists. Any warning goes to stderr ONLY; stdout must stay exactly one path, since callers consume it as such. Exit codes:
+   - `0` - resolved.
+   - `1` - unknown key, unknown flag, extra positional, bad layout profile, or a `--workspace` path that does not exist.
+   - `3` - a KNOWN key that the active profile leaves unset (a category key under `flat`), with an advisory on stderr naming the key and both remedies (`layout=hierarchy`, or an explicit `<key>=.claude/...` override) and NOTHING on stdout. Exit 3 MUST stay distinct from exit 1: callers branch on that difference to tell "this project has no home for that document type, fall back" apart from "I asked for a key that does not exist, which is my bug".
 
-**Why this matters**: resolve-path is on the hot path for the state-touching skills - cycle, run-task, save-session, spec, and backlog-compact all call it instead of hardcoding `.claude/...` paths, so a project can relocate its state via `.claude/oj-paths.env` without any skill being forked. A regen that omitted this subcommand would leave those skills resolving nothing (or reverting to stale hardcoded paths), silently breaking per-project state layout.
+**Why this matters**: resolve-path is on the hot path for the state-touching skills - cycle, run-task, save-session, spec, and backlog-compact all call it instead of hardcoding `.claude/...` paths, so a project can relocate its state via `.claude/oj-paths.env` without any skill being forked. A regen that omitted this subcommand would leave those skills resolving nothing (or reverting to stale hardcoded paths), silently breaking per-project state layout. The category keys are what let a skill **file** a document rather than merely produce one: without them, a skill that concludes "this is a decision" has nowhere to put it and falls back to dumping a document in `artifacts/`, which recreates the one-dump-directory pattern a type-based taxonomy exists to remove.
+
+**Verification**: `scripts/tests/oj-helper-hook-test.sh` scenario S16 covers both profiles - state-key defaults, category keys exiting 3 under `flat`, category resolution under `hierarchy`, `--node` normalization across four spellings, the typo'd-profile falsifier, override precedence over both a flat-unset and a hierarchy default, and the missing-prefix warning landing on stderr without polluting stdout. Extend S16 rather than rewriting it: a harness that only knows one layout is how the next layout change breaks silently.
+
+Note the `id-index` key alongside the two families: it has **no default under either profile** and is override-only. It names a project-authored file mapping item id -> owning backlog file, and the plugin cannot guess whether one exists or what it is called, so guessing would hand callers a path to a file that is not an index. It exits 3 when unset, and its advisory MUST NOT suggest `layout=hierarchy` - a profile switch cannot supply an override-only key, so that advice would be actively misleading.
+
+#### 17. backlog-list — Enumerate Every Backlog File
+
+**Purpose**: Echo every backlog file, one absolute path per line. `resolve-path backlog` answers "ONE path" and must keep doing so - nine call sites consume it as a single path - but a backlog is not always one file. A project large enough to carry several sub-projects splits its backlog per node, and a skill pointed at any single file then shows a fraction of the work while omitting the rest **without saying so**. That silence is the defect: nothing about successfully reading one file tells you four others exist. The plural question therefore gets its own subcommand rather than a changed contract:
+
+- `resolve-path backlog` -> where to **write** (always exactly one path)
+- `backlog-list` -> what exists to **read** (zero or more paths)
+
+**Invocation**: `oj-helper backlog-list [--workspace PATH]`
+
+**Critical implementation details**:
+
+1. **Workspace-root resolution**: identical to `resolve-path` (see §15 detail 2).
+2. **Source, in order**: (a) `backlog-glob=` in `<root>/.claude/oj-paths.env` - **one or more** workspace-relative glob patterns separated by whitespace (e.g. `backlog-glob=.claude/backlog.md .claude/proj/**/plan.md`). Several patterns are supported because the files making up one backlog need not share a filename. Multiple `backlog-glob=` LINES are not merged; the last wins, matching `resolve-path`'s `tail -n1` precedence. (b) otherwise the single `resolve-path backlog` answer, emitted only if that file exists.
+3. **Globbing**: enable `nullglob` (so a pattern matching nothing expands to nothing rather than to the literal pattern, which would be emitted as a bogus path) AND `globstar` (so `**` spans directory levels - a type-based taxonomy nests nodes at varying depths and a single-level `*` cannot reach them). **Save and restore both options**: the function runs inside a long-lived dispatcher, and leaking shell options into unrelated subcommands is action at a distance.
+4. **Split the pattern list WITHOUT pathname expansion** - use `read -ra`, never a bare `for pat in $glob`. This is a real regression, not a hypothetical: an unquoted expansion globs each word against `$PWD` first, and with `nullglob` on, a pattern that matches nothing in the *current* directory expands to nothing and is silently discarded before it is ever anchored to `$root`. The symptom is `backlog-list` printing nothing while the files plainly exist.
+5. **Emit only existing regular files**, sorted and deduplicated (`LC_ALL=C sort -u`).
+6. **Exit 0 even when the output is empty** - an empty backlog set is a legitimate answer, not an error, and callers count lines. Exit 1 only on a bad `--workspace` or a bad flag.
+
+**Why this matters**: `show-backlog` aggregates across the returned set and `backlog-compact` operates per file. Without this subcommand a split backlog is invisible: the skills read one file, report success, and omit the majority of the work.
+
+#### 18. backlog-lint — Backlog Structural Integrity Checks
+
+**Purpose**: Report structural defects across the backlog set. Both classes below were found in a real 1,151-line backlog, and **neither was findable by reading** - they are invisible at human review and cheap for a machine, which is exactly the shape of check worth automating.
+
+**Invocation**: `oj-helper backlog-lint [--workspace PATH]`
+
+**Critical implementation details**:
+
+1. **File set**: obtained from `backlog-list` (same workspace resolution). When it is empty, print a "nothing to check" line and exit 0 - do not treat an absent backlog as a failure.
+2. **Item-id definitions** are read from the § Backlog Item Schema definition form only - a list item opening with a bold id, `- **<PREFIX>-<N>**` - **not** from every mention of an id. A cross-reference in prose MUST NOT be counted as a second definition, or the check cries wolf on every link and gets ignored.
+3. **Checks**:
+   - `DUPLICATE-ANCHOR` (per file): the same `<a id="x">` defined twice. Every inbound link resolves to the first; the second is unreachable.
+   - `DUPLICATE-ID` (per file): the same item id defined twice, making the second unreachable.
+   - `ID-COLLISION` (across files, only when more than one file is in the set): the same id defined in two different files, so two entirely different items answer to one id and inbound links silently resolve to whichever is read first. **Splitting one backlog into several creates this risk where none existed**, and two concurrent sessions creating items the same day is enough to trigger it. Name every owning file in the finding.
+   - All three are `grep -o` plus `sort | uniq -d`; keep them that cheap.
+4. **Output and exit**: one line per finding on stdout, then a summary. Exit 0 clean, **1 when any finding is reported** so a caller can gate on it, 2 on a driver error via `die_usage`.
+
+**Why this matters**: this is the check that makes a plural backlog safe to adopt. It is wired into `/oj:health-check` as a probe, where exit 1 is reported as DEGRADED rather than FAIL - the plugin is working correctly and reporting a defect in the *project's* state, and the report must keep that distinction visible.
+
+**Verification**: `scripts/tests/oj-helper-hook-test.sh` scenario S17 covers the single-file path, the empty-backlog path, plural listing via `backlog-glob`, all three defect classes, the multi-pattern + globstar case, and three falsifiers that matter: a prose mention is not a definition, a non-matching glob emits nothing rather than the literal pattern, and shell options do not leak to the caller.
 
 ### Dispatcher
 
@@ -443,6 +511,8 @@ case "${1:-}" in
   migrate-legacy)      shift; cmd_migrate_legacy "$@" ;;
   feedback-path)       shift; cmd_feedback_path "$@" ;;
   resolve-path)        shift; cmd_resolve_path "$@" ;;
+  backlog-list)        shift; cmd_backlog_list "$@" ;;
+  backlog-lint)        shift; cmd_backlog_lint "$@" ;;
   install-hooks)       shift; cmd_install_hooks "$@" ;;
   issue-tracker-check)       shift; cmd_issue_tracker_check "$@" ;;
   issue-tracker-list)        shift; cmd_issue_tracker_list "$@" ;;
@@ -465,7 +535,13 @@ SUBCOMMANDS:
   conductor-inject     Inject CONDUCTOR.md at session start (SessionStart hook)
   migrate-legacy       Detect Makefile-era install and write migration sentinels
   feedback-path        Output feedback file path for dev mode (OJ_DEVMODE=1)
-  resolve-path         Echo the canonical path for a state key (session|backlog|artifacts|state-dir|config|retros)
+  resolve-path         Echo the canonical path for a state key
+                       state:    session|backlog|artifacts|state-dir|config|retros
+                       category: decisions|facts|open-questions|requirements|design|plan
+                       (category keys need layout=hierarchy in .claude/oj-paths.env; exit 3 if unset)
+                       override-only: id-index
+  backlog-list         List every backlog file, one absolute path per line (honors backlog-glob=)
+  backlog-lint         Check the backlog set for duplicate anchors, duplicate ids, cross-file id collisions
   install-hooks        Set core.hooksPath to .githooks in current repo (opt-in)
 
   issue-tracker-check        Validate issue tracker prerequisites and discover project

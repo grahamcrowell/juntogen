@@ -64,11 +64,26 @@ org-scaffold/
 │   └── intake.md                       # Inbound task intake command (org scope)
 ├── state/
 │   └── .gitkeep                        # Ensures state/ directory exists; contents gitignored
-└── artifacts/
-    ├── analysis/
-    │   └── .gitkeep
-    └── adr/
-        └── .gitkeep
+├── artifacts/
+│   ├── analysis/
+│   │   └── .gitkeep
+│   └── adr/
+│       └── .gitkeep
+└── profiles/                           # Layout profiles for a per-project .claude/
+    ├── README.md                       # flat vs hierarchy: comparison, choosing, switching cost
+    └── hierarchy/                      # The type-based profile, ready to copy into a project
+        ├── oj-paths.env                # layout=hierarchy + backlog-glob= (the activating file)
+        ├── backlog.md                  # Root-node backlog (one file in a set)
+        ├── decisions.md                # Root-node decision log
+        ├── open-questions.md           # Root-node open questions
+        ├── facts/
+        │   └── README.md               # The provenance rule (MEASURED/DERIVED/ASSERTED-UNVERIFIED)
+        └── [PROJECT_NODE]/             # One example node showing the four typed files
+            ├── README.md               # What the node carries; nesting guidance
+            ├── requirements.md
+            ├── design.md
+            ├── plan.md                 # Also this node's backlog (reached by backlog-glob)
+            └── decisions.md
 ```
 
 ---
@@ -296,14 +311,57 @@ This header enables `/health-check` to verify scaffold completeness (files with 
 
 ---
 
+### 9. `profiles/` — both layout profiles
+
+**Purpose**: `org-scaffold/` is what OpenJunto **propagates**, so a scaffold that ships only one layout means every new project starts in that shape regardless of what `resolve-path` can express. Shipping both is what makes the target property real: *OpenJunto can express a layout it does not impose.*
+
+**The flat profile is the existing scaffold tree, UNCHANGED.** Do not move `BACKLOG.md`, `artifacts/`, `state/`, `reference/`, or `llms.txt` into a `profiles/flat/` directory. Relocating them would be a breaking change for every adopter, to express something a paragraph in `profiles/README.md` already says. The flat profile is the root of the scaffold; `profiles/` holds only the alternative and the comparison.
+
+#### `profiles/README.md`
+
+A comparison table (`flat` vs `hierarchy`) across: how the profile is selected, backlog shape, where a produced document goes, what the category keys resolve to, and which project shape each suits. Then:
+
+- **`flat` is the default and the right answer more often than not.** State plainly that a small project is well served by one `BACKLOG.md`, and that adopting the hierarchy because it *looks* more rigorous costs real filing effort per document and returns nothing. A generator that presents the hierarchy as the upgrade path has mis-stated the design.
+- **The switch signal is not size alone** - it is when a single file has stopped answering a single question (a `BACKLOG.md` that has become several project plans wearing one filename).
+- **What adopting `hierarchy` obliges you to maintain**: ids unique across the whole file set rather than per file (with `oj-helper backlog-lint` as the check); a filing decision per document (pointing at `${CLAUDE_PLUGIN_ROOT}/reference/file-patterns.md` § Filing Rule, and naming both tie-breaker rules); and `artifacts` left unset, because setting it re-creates the dump directory the taxonomy exists to remove.
+- **Switching either way is cheap**: write or delete `.claude/oj-paths.env` and move files. The plugin keeps no state about the profile and re-reads it per call, so there is no migration and nothing to keep in sync. Say "start flat."
+
+#### `profiles/hierarchy/`
+
+A per-project `.claude/` template, copied in and de-placeholdered. Contents:
+
+- **`oj-paths.env`** — the activating file. Carries `layout=hierarchy`, a `backlog-glob=` line, and comments explaining the `.claude/` prefix rule and the stderr warning for a relative value that escapes the state tree. Two comment blocks are load-bearing and MUST survive: (a) **anchor each glob pattern at a node** - a bare `.claude/**/plan.md` also matches archived plans under a history area, silently pulling retired work into every listing; (b) **`artifacts` and `id-index` are deliberately NOT set**, with the reason for each stated, so a reader does not "helpfully" fill them in.
+- **`backlog.md`** — the root-node backlog, in the § Backlog Item Schema shape, carrying a prominent callout that it is **one file in a set**: read the whole set with `oj-helper backlog-list`, and ids are unique across the set rather than per file. Retains the single-source-discipline comment, noting it matters MORE under a split backlog because more files can now hold a stale copy of the same external state.
+- **`decisions.md`** and **`open-questions.md`** — root-node logs, each stating what belongs in it versus the neighbouring types, and each with a real format block. `decisions.md` must state that the file ACCUMULATES and that superseded entries are marked, never edited or deleted - a log whose entries get rewritten cannot answer "why did we do it that way", which is the only question it exists to answer. `open-questions.md` must require a "what would settle it" field and must state that closing a question means moving the answer to `decisions.md` or `facts/`.
+- **`facts/README.md`** — **the provenance rule**, stated as required rather than recommended, with the three-marker table (`MEASURED` naming the command/query, `DERIVED` naming its inputs, `ASSERTED-UNVERIFIED` naming the verification path). Must include: prefer `ASSERTED-UNVERIFIED` with a verification path over a bare number, because an unmarked number is indistinguishable from a measured one and quietly becomes load-bearing; and never upgrade a marker without running the check that justifies it (age is not evidence).
+- **`[PROJECT_NODE]/`** — exactly ONE example node with `README.md`, `requirements.md`, `design.md`, `plan.md`, `decisions.md`, mapping each file to its `resolve-path` key. The node README shows the nesting form (a subdirectory per subject) and says to nest only when a file has stopped answering one question, not in advance. `design.md` must carry the **"this is not a review"** callout; `plan.md` must state that it is ALSO this node's backlog and must warn against a trivially-green `verify:` value (`true`, `:`, `echo`, `exit 0`), since that value is copied verbatim into the backlog item's `AC` on graduation.
+
+**Placeholders**: `[PROJECT_NODE]`, `[SUBJECT]`, `[PREFIX]`, `[DOMAIN]` — Axiom 7 applies to this subtree exactly as it does to the rest of the scaffold.
+
+**Verify the profile actually resolves.** After generation, copy `profiles/hierarchy/` into a scratch `.claude/`, rename `[PROJECT_NODE]`, substitute the token in `oj-paths.env`, then assert that all six category keys resolve at the root node, that `--node` resolves at both one and two levels deep, that `artifacts` still returns the flat default (the profile must not set it), that `backlog-list` finds every planted file with no placeholder leakage, and that `resolve-path` emits no prefix warning from the shipped `oj-paths.env`. A scaffold that documents a layout the helper cannot resolve is worse than no scaffold.
+
+---
+
 ## Verification
 
 After generation, verify:
 
 ### File Completeness
-- [ ] All 11 files/directories present (`.gitignore`, `README.md`, `BACKLOG.md`, `llms.txt`, `reference/validated-facts-org.md`, `reference/org-coordination-guide.md`, `commands/health-check.md`, `commands/intake.md`, `state/.gitkeep`, `artifacts/analysis/.gitkeep`, `artifacts/adr/.gitkeep`)
+- [ ] All 11 flat-profile files/directories present (`.gitignore`, `README.md`, `BACKLOG.md`, `llms.txt`, `reference/validated-facts-org.md`, `reference/org-coordination-guide.md`, `commands/health-check.md`, `commands/intake.md`, `state/.gitkeep`, `artifacts/analysis/.gitkeep`, `artifacts/adr/.gitkeep`) — **at the scaffold ROOT, not relocated under `profiles/flat/`**
+- [ ] All 11 `profiles/` files present (`profiles/README.md`; `profiles/hierarchy/` × `oj-paths.env`, `backlog.md`, `decisions.md`, `open-questions.md`, `facts/README.md`; `profiles/hierarchy/[PROJECT_NODE]/` × `README.md`, `requirements.md`, `design.md`, `plan.md`, `decisions.md`)
 - [ ] `.gitignore` excludes `state/*` while preserving `state/.gitkeep`
 - [ ] All `.gitkeep` files present in empty directories
+
+### Layout Profiles
+- [ ] `profiles/README.md` presents `flat` as the default and the common-case answer — NOT as a stage to graduate from
+- [ ] `profiles/README.md` states what adopting `hierarchy` obliges the project to maintain (set-wide unique ids, a filing decision per document, `artifacts` left unset)
+- [ ] `profiles/hierarchy/oj-paths.env` sets `layout=hierarchy` and a `backlog-glob=`, and does NOT set `artifacts` or `id-index` — each with its reason stated in a comment
+- [ ] `profiles/hierarchy/oj-paths.env` warns that glob patterns must be anchored at a node, so an unanchored `**` does not pull in archived plans
+- [ ] `profiles/hierarchy/facts/README.md` states the provenance rule as REQUIRED, with all three markers and the "prefer ASSERTED-UNVERIFIED with a verification path over a bare number" instruction
+- [ ] `profiles/hierarchy/[PROJECT_NODE]/design.md` carries the "a review is not a design" callout
+- [ ] `profiles/hierarchy/[PROJECT_NODE]/plan.md` states it is also the node's backlog and warns against a trivially-green `verify:` value
+- [ ] `profiles/hierarchy/backlog.md` states it is one file in a set and that ids are unique across the set
+- [ ] **Live resolution check**: the copied-and-de-placeholdered profile resolves — six category keys at the root node, `--node` at one and two levels deep, `artifacts` still the flat default, `backlog-list` finding every file with no placeholder leakage, and no prefix warning on stderr
 
 ### Axiom 7 (No Org-Specific Content)
 - [ ] No real organization names in any file
@@ -361,11 +419,28 @@ org-scaffold/
 │   └── intake.md
 ├── state/
 │   └── .gitkeep
-└── artifacts/
-    ├── analysis/
-    │   └── .gitkeep
-    └── adr/
-        └── .gitkeep
+├── artifacts/
+│   ├── analysis/
+│   │   └── .gitkeep
+│   └── adr/
+│       └── .gitkeep
+└── profiles/
+    ├── README.md
+    └── hierarchy/
+        ├── oj-paths.env
+        ├── backlog.md
+        ├── decisions.md
+        ├── open-questions.md
+        ├── facts/
+        │   └── README.md
+        └── [PROJECT_NODE]/
+            ├── README.md
+            ├── requirements.md
+            ├── design.md
+            ├── plan.md
+            └── decisions.md
 ```
 
 These files are the seed content for any new org `.claude` coordination repo. They are not installed by `make install` — they require the separate `make org-scaffold` operation with a user-specified target directory.
+
+The scaffold root is the `flat` profile; `profiles/hierarchy/` is the alternative, copied into a per-project `.claude/` by a project that needs it. Both ship, and neither is imposed — that is the point of shipping both.

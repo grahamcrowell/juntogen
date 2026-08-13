@@ -120,15 +120,54 @@ consumers:
 
 **Purpose**: Echo the absolute path OpenJunto should use for a canonical state file or directory, honoring per-project layout and overrides. Skills (save-session, show-backlog, run-task, cycle) and CONDUCTOR templates historically hardcoded `.claude/state/session.md`, `.claude/BACKLOG.md`, and `.claude/artifacts/`; a project that relocated state had no way to redirect OpenJunto without forking every skill. resolve-path centralizes the decision: a skill asks for a key, oj-helper returns the path.
 
-**Invocation**: `oj-helper resolve-path <key> [--workspace PATH]`, where `<key>` is one of `session | backlog | artifacts | state-dir | config | retros`
+**Invocation**: `oj-helper resolve-path <key> [--workspace PATH] [--node RELPATH]`, where `<key>` is one of two families:
+- **state keys** - `session | backlog | artifacts | state-dir | config | retros`
+- **category keys** - `decisions | facts | open-questions | requirements | design | plan`
 
 **Protocol**:
 1. Resolve the workspace root (the directory that contains `.claude/`), in order: (1) `--workspace PATH` (must exist); (2) `$OJ_STATE_ROOT`, set by a SessionStart hook - a trailing `/.claude/local` or `/.claude` is tolerated and stripped; (3) the nearest ancestor of `$PWD` (including `$PWD`) that contains a `.claude/` directory; (4) `$PWD`
-2. Map the key to its default workspace-relative path - oj state lives directly under `.claude/`: `session` -> `.claude/state/session.md`, `backlog` -> `.claude/BACKLOG.md`, `artifacts` -> `.claude/artifacts`, `state-dir` -> `.claude/state`, `config` -> `.claude`, `retros` -> `.claude/archive/retros`
-3. Apply per-key overrides: `<root>/.claude/oj-paths.env` may set `key=workspace-relative-path` (with `#` comments and surrounding whitespace allowed); an override wins over the default for that key
-4. Emit exactly one absolute path on stdout; the path is NOT created (resolve-path is pure resolution, safe to call before the file exists)
+2. Read the layout profile from `layout=` in `<root>/.claude/oj-paths.env`: `flat` (the default when absent) or `hierarchy`. Any other value is a hard error - a typo'd profile must not degrade silently to `flat`. **`flat` stays the default**: OpenJunto must be able to express a layout it does not impose, so no project's taxonomy is promoted to the shipped default.
+3. Map the key to its default workspace-relative path:
+   - **state keys** (both profiles - profile-independent, since relocating them is an override's job, not a taxonomy's): `session` -> `.claude/state/session.md`, `backlog` -> `.claude/BACKLOG.md`, `artifacts` -> `.claude/artifacts`, `state-dir` -> `.claude/state`, `config` -> `.claude`, `retros` -> `.claude/archive/retros`
+   - **category keys under `hierarchy`**: `<node>/<key>.md`, except `facts` -> `<node>/facts`. `<node>` is `.claude` by default, or `.claude/<RELPATH>` when `--node` is given (normalize away a leading `./`, a leading or trailing `/`, and a leading `.claude/`; `--node` is accepted-and-ignored for state keys and under `flat`, so a caller never branches on the profile)
+   - **category keys under `flat`**: deliberately unset. A flat project has no per-type filing surface, and inventing one would aim skills at a file the project does not keep
+4. Apply per-key overrides: `<root>/.claude/oj-paths.env` may set `key=workspace-relative-path` (with `#` comments and surrounding whitespace allowed); an override wins over the profile default for that key, including over the `flat`-unset state, so a flat project can give one category key a home without adopting the whole hierarchy
+5. Validate the override: a relative value not starting with `.claude/` resolves outside the state tree - warn on stderr naming the key, the value, and the path it actually resolves to, then honor it anyway. An absolute value is honored silently (a supported escape)
+6. Emit exactly one absolute path on stdout; the path is NOT created (resolve-path is pure resolution, safe to call before the file exists). Warnings go to stderr only
 
-**Usage**: Called by state-touching skills instead of hardcoding paths, so a project can relocate its state via `.claude/oj-paths.env` without every skill being forked. Exit 0 on success; exit 1 on a bad key or an unresolvable workspace (e.g. a `--workspace` path that does not exist).
+**Usage**: Called by state-touching skills instead of hardcoding paths, so a project can relocate its state via `.claude/oj-paths.env` without every skill being forked. The category keys are what let a skill **file** a document by type rather than merely produce one; without them a skill that concludes "this is a decision" falls back to dumping a document in `artifacts/`. Exit codes: `0` resolved; `1` bad key, bad flag, bad layout profile, or an unresolvable workspace (e.g. a `--workspace` path that does not exist); `3` a known key the active profile leaves unset, with an advisory on stderr and nothing on stdout. Exit 3 stays distinct from exit 1 so a caller can tell "no home for this document type here, fall back" from "I asked for a key that does not exist".
+
+---
+
+#### backlog-list — Enumerate Every Backlog File
+
+**Purpose**: Echo every backlog file, one absolute path per line. `resolve-path backlog` answers "one path" and must keep doing so, but a backlog is not always one file: a project carrying several sub-projects splits it per node, and a skill pointed at any single file then shows a fraction of the work while omitting the rest without saying so. Splitting the two questions keeps the single-path contract intact - `resolve-path backlog` is where to WRITE, `backlog-list` is what exists to READ.
+
+**Invocation**: `oj-helper backlog-list [--workspace PATH]`
+
+**Protocol**:
+1. Resolve the workspace root exactly as `resolve-path` does
+2. If `backlog-glob=` is set in `<root>/.claude/oj-paths.env`, treat its value as one or more whitespace-separated workspace-relative glob patterns; `**` spans directory levels. Split the value WITHOUT pathname expansion, then expand each pattern anchored at the root, with a no-match expanding to nothing rather than to the literal pattern
+3. Otherwise fall back to the single `resolve-path backlog` answer, emitted only if that file exists
+4. Emit only existing regular files, sorted and deduplicated
+
+**Usage**: `show-backlog` aggregates across the returned set; `backlog-compact` operates per file. Exit 0 even when the output is empty - an empty backlog set is a legitimate answer, and callers count lines. Exit 1 only on a bad workspace or flag.
+
+---
+
+#### backlog-lint — Backlog Structural Integrity Checks
+
+**Purpose**: Report structural defects across the backlog set that are invisible to a human reading the files and cheap for a machine to find.
+
+**Invocation**: `oj-helper backlog-lint [--workspace PATH]`
+
+**Protocol**:
+1. Take the file set from `backlog-list`; when empty, report "nothing to check" and exit 0
+2. Read item-id DEFINITIONS only from the backlog item schema's definition form (a list item opening with a bold id), never from a mention - a cross-reference in prose must not count as a second definition, or the check cries wolf on every link
+3. Report three classes: a duplicate anchor id within a file (inbound links reach only the first); the same item id defined twice within a file (the second is unreachable); and the same id defined in more than one file (two different items answer to one id, so inbound links resolve to whichever is read first). The third becomes possible only once a backlog is split, and concurrent sessions creating items the same day is enough to trigger it
+4. One line per finding, then a summary
+
+**Usage**: consumed by the backlog-reading commands and by the health-check probe. Exit 0 clean, 1 when any finding is reported so a caller can gate on it, 2 on a driver error. A finding describes the PROJECT's state, not a broken install; a consumer must keep that distinction in its report.
 
 ---
 
