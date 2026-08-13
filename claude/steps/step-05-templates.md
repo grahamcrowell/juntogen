@@ -34,6 +34,14 @@ Generate **9 deliverable templates** in markdown format. Create each file at the
 
 Each template is a structured format for a common deliverable type. Templates are starting points — projects copy to `.claude/` and customize as needed.
 
+### Filing headers (applies to every template that names a destination)
+
+A template's opening comment MUST **name the resolve-path key, not a literal path**. Hardcoding `.claude/artifacts/analysis/` teaches every user of the template to bypass path resolution, which is exactly the drift the resolver exists to remove. Each destination-bearing template states: the key to resolve (with `--node <relpath>` where the type is node-scoped), the fallback when the key exits 3, and a pointer to `reference/file-patterns.md` § Filing Rule. Specifically:
+
+- **`technical-analysis.md`** — an analysis has no category key, so it lands under `oj-helper resolve-path artifacts` (default `.claude/artifacts/analysis/`). The header MUST add the redirect: if what is being written is really a DESIGN or a set of DECISIONS rather than an investigation, resolve that type's key instead and file it at the owning node, where it stays citable.
+- **`architecture-decision-record.md`** — an ADR **is** a decision: resolve `decisions` (with `--node`) and append there, since under a type-based layout decisions accumulate in one file per node rather than one file per decision. Fall back to the artifacts root on exit 3. Keep the write-once rule, and state its reason: a superseded decision is never edited or deleted, because the fact that it was once the answer is part of why the current answer is what it is.
+- **`retrospective.md`** — resolve `retros`. A retrospective is a point-in-time record and belongs in a history area, never at a node. The header MUST carry the converse, which matters more: new intent produced by the retrospective does NOT stay in it — file that by its own type and leave a pointer, because content filed only as a review becomes uncitable and stops being the answer to "what is the current design?" while still being that answer. Its action-items note MUST name the resolved backlog rather than a literal `BACKLOG.md`.
+
 ## Key Requirements
 
 ### 1. technical-analysis.md

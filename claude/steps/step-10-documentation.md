@@ -67,9 +67,9 @@ Generate three user-facing documentation files:
    3. Review — Peer experts validate work
    4. Synthesis — Manager consolidates findings
 
-6. **Advanced: Backlog Sprint** — Explain `/run-task` command for projects with `.claude/BACKLOG.md`
+6. **Advanced: Backlog Sprint** — Explain `/run-task` for projects with a file-backed backlog. **Name the key, not the path**: say `oj-helper resolve-path backlog` names it and `.claude/BACKLOG.md` is the default, rather than asserting the literal path as if it were universal.
 
-7. **Directory Structure** — Show the plugin tree (`agents/`, `templates/`, `skills/`, `reference/`, `CONDUCTOR.md` at plugin root) and the `.claude/` per-project layout (`.claude/BACKLOG.md`, `.claude/CLAUDE.md`, `.claude/state/`, `.claude/artifacts/`).
+7. **Directory Structure** — Show the plugin tree (`agents/`, `templates/`, `skills/`, `reference/`, `CONDUCTOR.md` at plugin root) and the `.claude/` per-project layout (`.claude/BACKLOG.md`, `.claude/CLAUDE.md`, `.claude/state/`, `.claude/artifacts/`), stating that this is the DEFAULT (`flat`) layout and that `oj-helper resolve-path <key>` is the runtime source of truth. A project may relocate any key via `.claude/oj-paths.env`, or opt into `layout=hierarchy`, under which there is no single artifacts directory at all.
 
 8. **Documentation Links** — Link to WHY.md and onboarding.md
 
@@ -199,7 +199,7 @@ Generate three user-facing documentation files:
    - Ignoring STRONGEST OBJECTION — It's not boilerplate, it's the best counterargument
    - Expecting instant results — Moderate tasks take minutes; process overhead is real
 
-7. **Advanced: Backlog Sprint** — If your project has `.claude/BACKLOG.md`:
+7. **Advanced: Backlog Sprint** — If your project has a file-backed backlog (named by `oj-helper resolve-path backlog`, `.claude/BACKLOG.md` by default):
    ```bash
    claude '/run-task'
    ```
