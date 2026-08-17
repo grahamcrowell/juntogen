@@ -99,9 +99,9 @@ You lead and coordinate expert sub-agents, synthesize their feedback, and drive 
 ```
 
 #### Triage Requirement (Section 2)
-The Section 2 "Triage Requirement" subsection MUST emit the qualified statement from `D08-core-protocol.md` (line ~91) verbatim — the triage requirement applies only to requests routed through the coordinated-cycle command primitives (on Claude Code, the `/oj:cycle` and `/oj:run-task` slash commands), NOT to every free-form user message. Emit:
+The Section 2 "Triage Requirement" subsection MUST emit the qualified statement from `D08-core-protocol.md` (§ Triage Requirement) verbatim — the triage requirement applies only to requests routed through an orchestration command, NOT to every free-form user message. It MUST reference the orchestration-command definition in the Delegation Boundary rather than restate the membership (`D08` [CANONICAL: orchestration-command]). Emit:
 ```
-Assess every request routed through the cycle-runner / task-lifecycle commands (`/oj:cycle`, `/oj:run-task`) before engagement. Two dimensions: execution model and stakeholder identification. Free-form messages outside an invoked command receive a direct response and do not require triage.
+Assess every request routed through an orchestration command (§ Delegation Boundary) before engagement. Two dimensions: execution model and stakeholder identification. Free-form messages outside an invoked command receive a direct response and do not require triage.
 ```
 Do NOT emit the legacy unqualified "Assess every incoming request before engagement" wording — that form predates the explicit-invocation activation model documented in `F16-architecture.md` §Activation Mechanism and is now considered a regen-fidelity drift bug.
 
@@ -110,9 +110,22 @@ Do NOT emit the legacy unqualified "Assess every incoming request before engagem
 Trivial (tier 0): typo-scale change, no design choices, causal chain terminates before production. Zero mandatory stakeholders — execute inline. Any request that is not Trivial is Simple or above and carries the mandatory Product + Distinguished pair.
 ```
 
+#### Delegation Boundary SCOPE (Section 2) — the authoritative orchestration-command list
+
+The Delegation Boundary subsection MUST emit a SCOPE statement carrying the **single authoritative enumeration** of orchestration commands (`D08-core-protocol.md` [CANONICAL: orchestration-command]). On Claude Code that list is `/oj:cycle`, `/oj:run-task`, `/oj:impl`, `/oj:review`, `/oj:watch-pr`, and it MUST be marked as the authoritative list so a future command is added here rather than in a copy. Emit wording equivalent to:
+```
+**SCOPE** — when this boundary binds: inside an orchestration command (`/oj:cycle`, `/oj:run-task`, `/oj:impl`, `/oj:review`, `/oj:watch-pr` - authoritative list) and at **Moderate/Complex** tier, where delegation is what creates the review boundary that makes peer review possible. It does **NOT** bind:
+```
+followed by the carve-outs (free-form requests outside an invoked command; Trivial/Simple tier; host projects whose own instructions define a hands-on workflow).
+
+**The list MUST appear exactly once in the generated file.** The Self-Check gate and the Triage Requirement reference it ("list above", "§ Delegation Boundary"); they MUST NOT restate the members. This is a `D08` INVARIANT with a falsifier, not a style preference: a command absent from one of several copies produces a boundary that silently stops binding for it, and the copies stay internally consistent so nothing flags it. Every command capable of writing code, publishing a change, or posting external commentary MUST be a member — generating `impl`, `review` or `watch-pr` (step-06 items 9-11) without adding them here ships that silent failure.
+
 #### Self-Check Gate (Section 2)
+
+Question 0 references the SCOPE list rather than repeating it:
 ```
 **Self-Check** before any Edit/Write action:
+0. "Am I inside an orchestration command (list above) or at Moderate/Complex tier?" — If **no** (free-form, Trivial, or Simple tier), the boundary does not apply: implement directly (Simple tier still requires PERSPECTIVE blocks first). If **yes**, continue.
 1. "Is this BACKLOG.md or a issue tracker command?" — If yes, proceed. If no, delegate.
 2. "Am I fixing something an expert should fix?" — If yes, delegate.
 3. "Would this be better with expert review?" — If yes, delegate.
@@ -286,8 +299,10 @@ After generation, verify:
 - [ ] Execution section includes a one-paragraph-per-tier overview (Trivial/Simple/Moderate/Complex) and an explicit directive to load `${CLAUDE_PLUGIN_ROOT}/reference/execution-protocol.md` before Moderate/Complex execution
 - [ ] Triage Requirement subsection emits the Trivial fast-path clause (zero mandatory stakeholders; typo-scale, no design choices, causal chain terminates before production) and states the mandatory Product + Distinguished pair applies at Simple and above
 - [ ] Opening lines match specification exactly (role declaration)
-- [ ] Triage Requirement (Section 2) emits the QUALIFIED statement scoping triage to cycle-runner / task-lifecycle command invocations (`/oj:cycle`, `/oj:run-task`); does NOT emit the legacy unqualified "Assess every incoming request" form
-- [ ] Self-Check questions present verbatim (3 questions)
+- [ ] Triage Requirement (Section 2) emits the QUALIFIED statement scoping triage to orchestration-command invocations by REFERENCE to § Delegation Boundary; does NOT restate the command list and does NOT emit the legacy unqualified "Assess every incoming request" form
+- [ ] Delegation Boundary SCOPE emits the authoritative orchestration-command list naming `/oj:cycle`, `/oj:run-task`, `/oj:impl`, `/oj:review`, `/oj:watch-pr`, marked authoritative
+- [ ] That list appears EXACTLY ONCE in the generated file (`grep -cF '/oj:run-task\`' CONDUCTOR.md` == 1); Self-Check question 0 and the Triage Requirement reference it instead of repeating it
+- [ ] Self-Check questions present verbatim (4 questions, numbered 0-3; question 0 is the scope gate)
 - [ ] Circuit breaker triggers present (3 revisions, 2 hours, deadlock, scope)
 - [ ] Adaptive signals table present (3 rows)
 - [ ] Triage criteria table present (4 criteria with checkboxes)
