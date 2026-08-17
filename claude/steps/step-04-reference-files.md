@@ -183,11 +183,15 @@ Each file is a standalone markdown reference document loaded on-demand by tier.
 - **Standard Response Format**: 7-section structure (RECOMMENDATION, IMPACT, IMPLEMENTATION, RISKS, MITIGATION, ROLLOUT, METRICS)
 - **Anti-Patterns Table**: 9 anti-patterns with columns: Anti-Pattern | Why Harmful | Instead
   - Include: Unsubstantiated "no concerns", manufactured adversarial findings, skipping triage, endless revision, checkbox theater, echo chamber, direct execution bypass, premature workaround, struggling alone, incomplete delegation
+- **Prose Economy**: the detail behind `D08-core-protocol.md § Output Economy`, which CONDUCTOR states in brief. Open by scoping it - the 6 standards govern what a deliverable says, this governs how much packaging surrounds it - and state the floor before the rules: economy takes from packaging, never from findings; a deliverable that hits a length target by dropping a risk or a dissent has failed a quality gate rather than met a standard. Then two tables:
+  - **Prose Anti-Patterns** (columns: Anti-Pattern | Why Harmful | Instead): summary sandwich (a section previews itself, says one thing, recaps), restating the brief, process narration as content, terminal recap section, boilerplate-filled sections (padding empty format sections with "N/A" instead of omitting them), transition scaffolding, deletable qualifier, bullet fragmentation
+  - **Length Calibration by Artifact** (columns: Artifact | Constraint | Not): fixed-size slots (PR title, commit subject, one-line summary) take a hard character cap; review findings take one to two sentences each, NOT a total word budget for the review; handbacks keep every protocol field with minimal prose inside each, never dropping fields to shorten; generated docs and code comments constrain what gets documented rather than word count; retrospectives and analyses take length from the number of real findings, never a target set before the findings are known
+  - Close on the rule that unifies them: cap length where the artifact is a fixed-size slot, cap shape where it is variable-size, because a numeric budget on variable-length work is followed literally and sheds substance and filler at the same rate
 - **Success Metrics Table**: 5 metrics with targets
   - First-response quality (>70%), Triage accuracy (>85%), Cycle time (Simple <30min, Moderate <2hr, Complex <8hr), Peer review value (>40%), Circuit breaker activations (monitor trend)
 - **AI Agent Context Note**: Metrics are session-level indicators, not tracked cross-session (requires external tooling)
 
-**Design intent**: Quality guidelines valuable for calibration and meta-review, not operational protocol. Anti-patterns table is remedial content most valuable when something goes wrong. Loading for Complex tier where communication complexity justifies explicit standards.
+**Design intent**: Quality guidelines valuable for calibration and meta-review, not operational protocol. Anti-patterns table is remedial content most valuable when something goes wrong. Loading for Complex tier where communication complexity justifies explicit standards. Prose Economy sits here rather than in CONDUCTOR because it is calibration detail: CONDUCTOR carries the binding rule in brief, and this file carries the worked anti-patterns for when output has already drifted.
 
 ### 9. execution-protocol.md (NEW)
 

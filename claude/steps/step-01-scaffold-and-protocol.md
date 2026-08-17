@@ -245,6 +245,22 @@ Emit a SHORT section (not the full mechanics). Required content:
 
 Keep the Convene→Consult Fallback design intent (below) satisfied: the CONDUCTOR Execution section states the fallback exists and points to the reference file for the mechanics; the load-bearing Fallback clause body itself renders into `reference/execution-protocol.md` (step-04). The CONDUCTOR pointer plus the reference-file body together preserve the guarantee.
 
+#### Output Economy Tail Block (NOT a subsection)
+
+Source: `D08-core-protocol.md § Output Economy`. **Do NOT emit an Output Economy subsection under Absolute Constraints.** The full rule renders into `reference/expert-preamble.md` (step-02) and `reference/communication-standards.md` (step-04); CONDUCTOR carries only the compressed tail block below.
+
+This split is forced by the byte budget, not chosen for style. The conductor-inject payload is asserted under 15,000 bytes by plugin test `T-B1.3` and currently sits within a few bytes of that cap. The full rule is ~1.7KB and does not fit; emitting it here fails the test and, worse, would buy a style rule by displacing load-bearing protocol. Measure the payload before adding anything to this file.
+
+Emit verbatim as the FINAL content of CONDUCTOR.md, after the Execution section:
+
+```
+<tone_preference>
+Lead with the outcome; cut packaging. Never cut a finding, risk, dissent, or falsifier to save words.
+</tone_preference>
+```
+
+Both halves are required. A conciseness rule stated only near the top of a long system prompt gets diluted by everything after it, so the tail placement is what makes it bind — and the second sentence is what keeps it safe, since an unqualified brevity instruction is followed literally and suppresses findings. Never emit the first sentence without the second.
+
 #### Subsection Headers
 Use `##` for major sections, `###` for subsections.
 
@@ -257,6 +273,9 @@ Capture the principle from Axiom 1 (Delegation Creates Review Boundaries): Manag
 
 #### Process Weight Proportionality
 Capture the principle from Axiom 2: Simple tasks stay simple, high-stakes work gets maximum scrutiny. Coordination cost matches blast radius of failure.
+
+#### Output Economy Floor
+Capture why the economy rule carries a floor clause: preference-trained models conflate length with quality, so padding is the default failure direction and needs explicit counter-pressure - but an unqualified brevity instruction is followed literally and suppresses findings, the same failure mode as telling a reviewer to report only significant issues. Bounding what economy may take from (packaging, never findings) is what makes it safe to apply inside an adversarial-review system.
 
 #### Adversarial Mechanisms
 Capture the principle from Axiom 3: LLMs default to coherent affirmation. STRONGEST OBJECTION and FALSIFIER fields are mandatory forcing functions for critique.
@@ -310,6 +329,10 @@ After generation, verify:
 - [ ] PERSPECTIVE block format present verbatim (Simple-tier inline rotation, under Stakeholder Perspectives)
 - [ ] Stakeholder Perspectives points to `${CLAUDE_PLUGIN_ROOT}/reference/expert-index.md` and notes the Trivial tier carries zero mandatory stakeholders
 - [ ] CONDUCTOR does NOT contain the spawn formats, handback formats, quality-gate item counts, or the model-selection table (those are validated in `reference/execution-protocol.md`, not here)
+- [ ] NO Output Economy subsection under Absolute Constraints (the full rule belongs to step-02/step-04; emitting it here breaks the payload budget)
+- [ ] The `<tone_preference>` block is the final content of CONDUCTOR.md and carries BOTH halves — lead-with-outcome/cut-packaging AND the bar on cutting findings, risks, dissent, or falsifiers
+- [ ] No numeric word or token budget appears on any variable-length deliverable (review body, handback field, generated document) anywhere in CONDUCTOR.md
+- [ ] conductor-inject payload measured and under 15,000 bytes (`T-B1.3`) — measure, do not assume; headroom is routinely under 200 bytes
 
 ### Format String Accuracy
 - [ ] All [EXACT] items that remain in CONDUCTOR (triage tables, self-check, circuit breaker, adaptive signals, domain signals, escalation guard, Simple-tier PERSPECTIVE block) reproduced character-for-character
