@@ -75,24 +75,49 @@ Generate 16 compact variants, each ~30 lines, <2KB. Compact profiles live under 
 
 ### EXACT Elements (Apply to All Profiles)
 
-#### YAML Frontmatter on FULL Profiles (registration hygiene — Item 4-REDUCED)
+#### YAML Frontmatter on FULL Profiles (native spawn configuration)
 
-Every one of the 16 FULL profiles (`agents/<name>.md`) MUST begin with a YAML frontmatter block delimited by `---` on the first line and `---` closing the block, containing EXACTLY two fields:
+Every one of the 16 FULL profiles (`agents/<name>.md`) MUST begin with a YAML frontmatter block delimited by `---` on the first line and `---` closing the block. The platform registers these profiles as first-class subagent types and spawns them by type, so **this block is live spawn configuration, not registration hygiene** — `model`, `effort`, `maxTurns`, `tools`, `disallowedTools` and `skills` all take effect. (Only `permissionMode`, `mcpServers` and `hooks` are ignored for plugin-provided subagents.)
+
+Two fields are required on every profile:
 
 - `name:` — the profile basename (e.g., `senior-software-engineer`), matching the filename without extension.
 - `description:` — a single-sentence delegation trigger derived from that profile's own **Engagement Triggers** (Section 15) content: a concise statement of when the manager should delegate to this expert.
 
-Example (Senior Software Engineer):
+Then emit the spawn configuration for the profile's **model class**, per D32 §6 (Per-Role Model Class and Default Tier). Read the concrete values from the platform snapshot — `platform.model_policy.default_model` for the authoring class, `platform.model_policy.advisory_model` for the advisory class, and `platform.effort_tiers` for the tier→effort binding. Do NOT hard-code model ids into this prompt's output logic; resolve them from the snapshot so an adopter's model policy governs.
+
+**Authoring class — `senior-software-engineer` only.** It writes code, so its turns produce the deliverable: no turn ceiling, no withheld tools.
 ```yaml
 ---
 name: senior-software-engineer
 description: Delegate when implementation quality, refactoring scope, code review, or hands-on development approach is the decisive concern.
+model: <platform.model_policy.default_model>
+effort: <effort for {tier-implementation}>
 ---
 ```
 
-Do NOT emit any other frontmatter keys — specifically NO `model:`, NO `effort:`, NO `tools:` fields (those are explicitly out of scope for this release; the general-purpose spawn model and the SubagentStart matcher are unchanged). Frontmatter goes ONLY on the full profiles; compact profiles under `reference/compact/` do NOT get frontmatter.
+**Advisory class, may author** — `senior-distinguished-engineer`, `senior-test-engineer`, `senior-devops-engineer`, `senior-technical-writer`. Bounded, but NOT tool-restricted: these four produce a durable artifact often enough that withholding write capability would break real work.
+```yaml
+model: <platform.model_policy.advisory_model>
+effort: <effort for {tier-routine}>
+maxTurns: 40
+```
 
-The full profile's frontmatter is stripped before injection as additionalContext by `oj-helper inject-profile` (step-07) — the profile body (from the opening line onward) is what gets injected. Emitting the two-field block is still required for registration hygiene even though the Task tool does not read `agents/*.md` as native subagent definitions this release.
+**Advisory class** — the remaining 11 profiles. Bounded and denied artifact-writing tools; they hand back a view, they do not author.
+```yaml
+model: <platform.model_policy.advisory_model>
+effort: <effort for {tier-routine}>
+maxTurns: 30
+disallowedTools: Write, Edit, NotebookEdit
+```
+
+Three rules that decide the cases this prompt cannot enumerate:
+
+1. **Class follows function, never seniority.** A role earns the authoring class by producing the artifact, not by the gravity of its domain. Reading code and forming a view costs the same whether the view is about security or about naming.
+2. **Use `disallowedTools`, never a `tools:` allowlist, to enforce the advisory boundary.** An allowlist strips shell access, which breaks any advisory role that must inspect a change to form a view at all. Deny the authoring verbs; leave investigation intact.
+3. **The turn ceiling is not optional on advisory profiles.** A sub-agent re-reads its own accumulating transcript every turn, so an unbounded advisory spawn does not stop once it has formed a view — it explores, and cost climbs steeply with turn count. Set the ceiling above the band where good work was observed, not at the median.
+
+Frontmatter goes ONLY on the full profiles; compact profiles under `reference/compact/` do NOT get frontmatter. The full profile's frontmatter is stripped before injection as additionalContext by `oj-helper inject-profile` (step-07) — the profile body is what gets injected on the fallback path — and every profile body MUST retain its pointer to `reference/expert-preamble.md`, since a natively-spawned expert reaches the shared standards through that pointer rather than through injection.
 
 #### 16-Section Structure
 Every full profile MUST contain these 16 sections in this exact order:
@@ -351,13 +376,16 @@ Each compact profile (~30 lines, <2KB) retains:
 After generation, verify:
 
 ### File Counts
-- [ ] 16 full profiles at `agents/<name>.md` (no `src/` wrapper; plugin-tree-direct layout), each starting with the two-field (`name`, `description`) YAML frontmatter block
+- [ ] 16 full profiles at `agents/<name>.md` (no `src/` wrapper; plugin-tree-direct layout), each starting with a YAML frontmatter block carrying `name`, `description`, and its model-class spawn configuration
 - [ ] 16 compact profiles at `reference/compact/<name>.md` (suffix `-compact` DROPPED; NO `agents/*-compact.md`, NO nested `agents/compact/` subdirectory)
 - [ ] Each full profile `agents/<name>.md` has a corresponding compact `reference/compact/<name>.md` with the same basename
-- [ ] No full profile emits `model:`, `effort:`, or `tools:` frontmatter keys (only `name:` and `description:`)
+- [ ] Every full profile declares `model:` and `effort:`; exactly ONE resolves to `platform.model_policy.default_model` (the authoring class) and the other 15 to `platform.model_policy.advisory_model`
+- [ ] Every advisory profile carries a `maxTurns:` ceiling; the authoring profile carries none
+- [ ] The 11 pure-advisory profiles carry `disallowedTools: Write, Edit, NotebookEdit`; no profile uses a `tools:` allowlist
+- [ ] No profile hard-codes a model id that is absent from the platform snapshot
 
 ### Full Profile Structure (Check 3-4 Profiles)
-- [ ] Begins with YAML frontmatter containing exactly `name:` (basename) and `description:` (one-sentence delegation trigger from Engagement Triggers); no other keys
+- [ ] Begins with YAML frontmatter containing `name:` (basename), `description:` (one-sentence delegation trigger from Engagement Triggers), and the spawn-configuration keys for its model class; no keys outside {name, description, model, effort, maxTurns, tools, disallowedTools, skills}
 - [ ] Contains all 16 sections in order
 - [ ] Section 1 starts with bold role title and AI agent caveats
 - [ ] Section 5 has "When Leading" and "When Supporting" subsections
@@ -408,7 +436,7 @@ After generation, verify:
 ## Output
 
 After completing this step, you will have:
-- 16 full expert profiles (`agents/<name>.md`, each with two-field YAML frontmatter, ~8-12KB each)
+- 16 full expert profiles (`agents/<name>.md`, each with model-class spawn frontmatter, ~8-12KB each)
 - 16 compact variants (`reference/compact/<name>.md`, ~30 lines, <2KB each)
 
 Total output: ~160KB for full profiles + ~32KB for compact profiles = ~192KB

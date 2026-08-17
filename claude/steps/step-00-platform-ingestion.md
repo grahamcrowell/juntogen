@@ -169,14 +169,17 @@ platform:
       effort: "xhigh"
     - tier: "reasoning"
       effort: "max"
-  effort_binding: "session"   # Claude Code has no per-spawn effort argument
-  session_effort_key: "effortLevel"
+  effort_binding: "per-agent" # Claude Code reads effort from the agent
+                              # definition; the spawn call takes no effort arg
+  session_effort_key: "effortLevel"   # covers the manager's own turns
+  agent_effort_key: "effort"          # field in the agent definition
   engagement_effort:
     simple: "routine"
     moderate: "implementation"
     complex: "reasoning"
   model_policy:
-    default_model: "opus"
+    default_model: "opus"       # authoring class; also the promote-to target
+    advisory_model: "sonnet"    # advisory class
     allowed_models: []          # MUST ship empty; see Schema Field Notes
     denied_models: []           # MUST ship empty; see Schema Field Notes
     min_effort_tier: "routine"  # minimum-effort floor; see Schema Field Notes
@@ -199,15 +202,18 @@ platform:
 - **`tools[].available`**: `true` for unconditionally available tools; `conditional` for tools available only in specific contexts (e.g., `AskUserQuestion` is not available in team sub-agent sessions).
 - **`models[].api_id`**: The actual string used in Claude Code's `model` parameter and `settings.json`. Distinct from the symbolic `id` used in derivation chains and human-readable references. Downstream prompts (step-09) use `api_id` when generating `settings.json`.
 - **`models[].max_output_tokens`**: Maximum output tokens per response for this model. Used by derivation chains that need to account for output length constraints (e.g., compact profile sizing, reference file budget). These are [EXTERNAL] platform facts — update when model limits change.
-- **`models[].input_price_per_mtok` / `output_price_per_mtok`**: USD per million tokens, first-party API rates. Replaces the former `cost_ratio` field. A ratio between models is no longer the operative lever: every persona runs one model, so spend varies with effort rather than model choice. Absolute prices are kept because they stay true platform facts and are what an operator needs in order to reason about a policy change.
+- **`models[].input_price_per_mtok` / `output_price_per_mtok`**: USD per million tokens, first-party API rates. Replaces the former `cost_ratio` field. Model choice IS an operative lever: roles take the class their function calls for, so spend varies with both the class mix and effort. Absolute prices are what an operator needs in order to reason about that split.
 - **`effort_tiers`**: Binds each cognitive-demand tier to an effort level. This is where the tier vocabulary resolves; it no longer resolves against `models[]`. Used by Chain 7 (effort selection).
-- **`effort_binding`**: `per-spawn` if the platform accepts an effort argument on the spawn call, `session` if effort can only be set once per session. A platform capability, not operator intent. Claude Code is `session`: the Agent tool takes no effort argument. Determines whether the function-first rules select effort per spawn or whether `engagement_effort` keys it off engagement tier.
-- **`engagement_effort`**: Engagement tier to effort tier. Consulted only when `effort_binding == "session"`.
+- **`effort_binding`**: `per-spawn` if the platform accepts an effort argument on the spawn call, `per-agent` if it reads effort from the agent definition, `session` if effort can only be set once per session. A platform capability, not operator intent. Claude Code is `per-agent`: the Agent tool takes no effort argument, but agent definitions are registered as first-class subagent types and their `model` / `effort` / `maxTurns` / `tools` / `disallowedTools` / `skills` fields all take effect.
+
+  **Determine this key from observed spawn records, not from which injection paths exist.** It was previously recorded as `session` here on the reasoning that expert profiles reached sub-agents only through the Onboard (`SubagentStart`) injection hook, which matches general-purpose spawns only. That reasoning was checkable and wrong: the profiles were being spawned by type all along, so the injection path was not the path being taken. The error did not stay a mis-set key — downstream prose hardened it into a prohibition, and one generated skill went as far as calling an omitted `model` parameter "a defect, not a shortcut". If a platform's agent-registration surface changes, re-verify this key against what its spawn records actually show before trusting the previous value.
+- **`engagement_effort`**: Engagement tier to effort tier. On a `per-agent` platform this sets the MANAGER's session effort only, since the roles carry their own. Set it once at triage and never raise it mid-run: changing effort between requests invalidates the prompt cache, so a mid-engagement raise re-writes the accumulated prefix at cache-write price.
+- **`agent_effort_key`**: The agent-definition field name carrying per-role effort. Emitted only when `effort_binding == "per-agent"`.
 - **`_meta.introspection_coverage`**: Present when `mode=declaration` and the declaration was produced by the introspection sub-step. Per-category markers (`full`, `partial`, `none`) documenting which fields were observed from the live session vs. filled from defaults. Enables downstream consumers to assess confidence in platform facts.
 - **`constraints.max_concurrent_agents_type`**: `configured` means the value is a tunable recommendation, not a hard platform ceiling. Derivation chains that use this value should apply it differently depending on type.
-- **`model_policy.default_model`**: The model every persona runs on. One model for all roles; cognitive demand is expressed as effort.
+- **`model_policy.default_model` / `model_policy.advisory_model`**: The two model CLASSES. `default_model` is the **authoring** class, taken by roles that write code or a durable artifact, and it is also the promote-to target when a function rule lands above a role's class. `advisory_model` is the **advisory** class, taken by roles that read and form a view. Class follows what the role produces, never its seniority or the gravity of its domain. Both are emitted concretely here; protocol prose names the classes only, per the s16 sweep and Axiom 7.
 - **`model_policy.allowed_models` / `denied_models`**: Optional org policy over the roster. Both MUST be emitted EMPTY. The generated tree is a general artifact installed by third parties, so naming a model here would impose one organization's procurement policy on every adopter (Axiom 7 - no org-specific content in core files). Having the knob is generic; filling it in is org-specific. An operator sets them per project via the adopter-side override, not by editing the generated file.
-- **`model_policy.min_effort_tier`**: Operator-set minimum-effort floor - the lowest tier any spawn may run at (`routine` | `implementation` | `reasoning`; ordering `routine < implementation < reasoning`; default `routine` = no floor). Used by Chain 7 (effort selection): after function rules and role defaults resolve a tier, a below-floor tier is raised to the floor and an at-or-above tier is left unchanged (lower bound only - never lowers a selection). Renamed from `min_model_tier`: with one model a floor cannot raise capability, only reasoning depth. This is operator intent, not an observable platform fact - always filled from defaults, never from introspection.
+- **`model_policy.min_effort_tier`**: Operator-set minimum-effort floor - the lowest tier any spawn may run at (`routine` | `implementation` | `reasoning`; ordering `routine < implementation < reasoning`; default `routine` = no floor). Used by Chain 7 (effort selection): after function rules and role defaults resolve a tier, a below-floor tier is raised to the floor and an at-or-above tier is left unchanged (lower bound only - never lowers a selection). Renamed from `min_model_tier`: the floor governs reasoning depth, not capability - capability is carried by the role's model class. This is operator intent, not an observable platform fact - always filled from defaults, never from introspection.
 - **`hooks[].matchers`**: Agent types that trigger this hook. SubagentStart fires for `general-purpose` agents; SessionStart has no matcher (fires for all sessions).
 
 ### STRUCTURAL Elements

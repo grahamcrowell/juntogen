@@ -521,7 +521,7 @@ cat /tmp/banner.err   # → OpenJunto v<version> active — OpenJunto coordinati
 - [ ] Sub-agents execute on the assigned model
 - [ ] Depth of reasoning tracks the engagement tier, not the individual spawn
 
-**Pass Criteria**: every spawn carries the same model explicitly; session effort matches the engagement tier; the manager makes no claim of per-spawn effort control.
+**Pass Criteria**: spawns of named roles omit `model` and inherit the role's declared class; `model` appears only on a documented override (the adversarial reviewer slot, or a lead on high-risk work); session effort matches the engagement tier and is not raised mid-run; the manager makes no claim of per-spawn effort control.
 
 ---
 

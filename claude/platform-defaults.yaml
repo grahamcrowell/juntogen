@@ -131,14 +131,13 @@ platform:
     # Symbolic id: used in derivation chains and human-readable references
     # api_id: actual string for Claude Code model parameter and settings.json
     # input_price_per_mtok / output_price_per_mtok: USD, first-party API rates.
-    #   Replaces the former `cost_ratio` field. A ratio between models is no
-    #   longer the operative cost lever - every persona runs the same model, so
-    #   spend varies with effort, not model choice. Absolute prices are kept
-    #   because they remain true platform facts and are what an operator needs
-    #   to reason about a policy change.
+    #   Replaces the former `cost_ratio` field. Model choice IS an operative
+    #   cost lever again: personas declare a model in their own frontmatter, so
+    #   the advisory bench runs sonnet while the authoring role runs opus. The
+    #   absolute prices are what an operator needs to reason about that split.
     #
-    # NOTE: no `tier` field. Tiers no longer bind to models; they bind to effort
-    #   levels (see effort_tiers below). This is the load-bearing change.
+    # NOTE: no `tier` field. Tiers bind to effort levels (see effort_tiers
+    #   below), not to models. The model split is carried by role frontmatter.
     - id: "opus"
       api_id: "claude-opus-5"
       context_window: 1000000
@@ -161,7 +160,7 @@ platform:
   # --- Effort ladder -------------------------------------------------------
   # The tier vocabulary ({tier-routine} / {tier-implementation} /
   # {tier-reasoning}) binds HERE, not to models. Cognitive demand is expressed
-  # as depth of reasoning on one model, not as a choice between models.
+  # as depth of reasoning; which model does the reasoning is set per role.
   #
   # `max` is Claude-specific: the Codex target's ladder tops out at `xhigh`.
   # That is exactly why the spec corpus names tiers rather than effort literals.
@@ -175,18 +174,35 @@ platform:
       effort: "max"
 
   # --- Effort binding site (a platform capability, not a policy) ------------
-  # "session"  = platform exposes no per-spawn effort knob; effort is set once
-  #              per session and therefore keys off ENGAGEMENT tier.
-  # "per-spawn" = platform accepts an effort argument on the spawn call, so the
-  #              function-first rules select effort per spawn.
-  # Claude Code is "session": the Agent (Task) tool's parameters are
-  # description / model / subagent_type / prompt / plan_mode_required - there is
-  # no effort argument. Session effort is the settings.json `effortLevel` key
-  # (equivalently the user's /effort setting).
+  # "session"   = platform exposes no per-spawn effort knob; effort is set once
+  #               per session and therefore keys off ENGAGEMENT tier.
+  # "per-agent" = platform reads effort from the subagent DEFINITION, so effort
+  #               is a property of the role and overrides session effort for the
+  #               duration of that spawn.
+  # "per-spawn" = platform accepts an effort argument on the spawn call itself,
+  #               so the function-first rules select effort per invocation.
+  #
+  # Claude Code is "per-agent". Corrected 2026-08-16: this key previously read
+  # "session" on the belief that agents/*.md frontmatter was inert because
+  # profiles reached experts only via the SubagentStart injection hook. In fact
+  # the profiles register as first-class subagent types (oj:senior-*) and are
+  # spawned by type, so their frontmatter is read - `model`, `effort`,
+  # `maxTurns`, `tools`, `disallowedTools` and `skills` all take effect. Only
+  # `permissionMode`, `mcpServers` and `hooks` are ignored for plugin subagents.
+  #
+  # The Agent (Task) tool call itself still takes no effort argument, so this is
+  # NOT "per-spawn": a one-off effort override means editing the role or
+  # spawning a different one. Model IS overridable per spawn via the tool's
+  # `model` parameter.
+  #
+  # Session effort (the manager's own turns) remains the settings.json
+  # `effortLevel` key, equivalently the user's /effort setting. Do not change it
+  # mid-session: varying effort between requests invalidates the prompt cache.
   # Contrast: juntogen/codex/platform-defaults.yaml is "per-spawn" - its
   # subagents tool takes `model_reasoning_effort`.
-  effort_binding: "session"
+  effort_binding: "per-agent"
   session_effort_key: "effortLevel"
+  agent_effort_key: "effort"          # frontmatter field in agents/*.md
 
   # Engagement tier -> effort tier. Consulted only when effort_binding=="session".
   engagement_effort:
@@ -203,9 +219,24 @@ platform:
   # upgrade. To change policy on an installed plugin, use the adopter-side
   # override (see ADOPTER OVERRIDE below), not this file.
   model_policy:
-    # The model every persona runs on. One model for all roles: cognitive
-    # demand is expressed as effort, not as a choice between models.
-    default_model: "opus"
+    # Two model CLASSES, keyed by what the role does rather than by how weighty
+    # its subject sounds. The prose in reference/execution-protocol.md and
+    # CONDUCTOR.md refers to the class names, never to these values - naming a
+    # model in core prose would impose one org's procurement on every adopter
+    # (Axiom 7). The values land in each role's own frontmatter, which is the
+    # operator-editable surface.
+    #
+    # authoring - the role writes code or a durable artifact; its turns produce
+    #   the deliverable, so capability is load-bearing.
+    # advisory  - the role reads and forms a view; its turns produce a handback
+    #   that is compressed before anyone acts on it.
+    #
+    # Evidence for splitting here rather than by seniority: across a 163-agent
+    # sample the advisory roles produced a file 6 times in 50 outings, while the
+    # authoring role wrote in 24 of 26. Reading code and forming a view costs
+    # the same whether the view is about security or about naming.
+    default_model: "opus"        # authoring class; also the promote-to target
+    advisory_model: "sonnet"     # advisory class
 
     # Optional org policy over platform.models. Both EMPTY by default and MUST
     # ship empty: this file is part of a general artifact installed by third
@@ -231,8 +262,8 @@ platform:
     # Lower bound only - never lowers a selection, so escalations still stand.
     # Ordering is routine < implementation < reasoning. `routine` is the
     # identity case (nothing is bumped).
-    # Renamed from `min_model_tier`: with one model the floor can no longer
-    # raise capability, only depth of reasoning. Same shape, honest name.
+    # Renamed from `min_model_tier`: the floor governs depth of reasoning, not
+    # capability - the model split is carried by role frontmatter instead.
     min_effort_tier: "routine"
 
   hooks:

@@ -119,23 +119,8 @@ keep_list:
     note: "Fallback prose naming the Task tool as the deputy-coordinator spawn primitive that replaces the agent-teams substrate in the degraded Complex-tier path. Platform-fact reference, not spec vocabulary."
 
   # -- step-03: inject-profile + convene-fallback platform-fact refs --
-  - file: "step-03-agent-profiles.md"
-    term: "SubagentStart"
-    match_kind: "literal"
-    reason: "inject-profile-binding"
-    note: "Profile-frontmatter contract prose referencing the SubagentStart hook by which oj-helper inject-profile injects profiles as additionalContext. Platform-fact reference."
-  - file: "step-03-agent-profiles.md"
-    term: "Task tool"
-    match_kind: "literal"
-    reason: "convene-fallback-binding"
-    note: "Prose describing that full-profile frontmatter is stripped before injection into general-purpose Task spawns. Platform-fact reference, not spec vocabulary."
 
   # -- step-04: execution-protocol reference-file platform-fact refs --
-  - file: "step-04-reference-files.md"
-    term: "Task tool"
-    match_kind: "literal"
-    reason: "convene-fallback-binding"
-    note: "Effort-out-of-scope note explaining that per-expert effort is not controllable because profiles are injected into general-purpose Task spawns. Platform-fact reference, not spec vocabulary."
   - file: "step-04-reference-files.md"
     term: "SubagentStart"
     match_kind: "literal"

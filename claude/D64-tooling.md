@@ -306,7 +306,7 @@ Lifecycle hooks called by Claude Code at specific events.
 
 #### Other Settings
 
-- `model: "opus"` - the model everything runs on. This is `platform.model_policy.default_model`; sub-agents set the same value explicitly on every spawn rather than relying on inheritance, so a spawn that omits it is a defect, not a shortcut.
+- `model: "opus"` - the **authoring** model class (`platform.model_policy.default_model`), taken by roles that write code or a durable artifact and used as the promote-to target when a function rule lands above a role's class. Roles that read and form a view take `platform.model_policy.advisory_model` instead. Each role declares its class in its own definition, so a spawn that omits `model` inherits that declaration, which is intended; `model` is passed only to override.
 - `alwaysThinkingEnabled: true` — Enable thinking process visibility
 - `effortLevel: "high"` - the session effort setting, and the ONLY effort control this platform exposes (`platform.session_effort_key`). Because `platform.effort_binding` is `session` here, this key is where cognitive-demand tiers actually land: the manager raises it at triage per `platform.engagement_effort` - `high` for Simple, `xhigh` for Moderate, `max` for Complex. The value above is the Simple-tier default, not a ceiling.
 
