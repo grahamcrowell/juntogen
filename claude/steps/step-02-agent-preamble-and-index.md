@@ -117,12 +117,18 @@ Exact table with tie-breaker authority:
 ### STRUCTURAL Elements
 
 #### Preamble Organization
-Five major sections:
+Six major sections:
 1. **AI Agent Context** — 5 key implications
 2. **Organizational Standards Reference** — Points to organizational-standards.md (if present), lists 2 categories (Core Technical Principles, Fellow-Level Leadership Behaviors)
 3. **Inline Perspective Context** — Explains Simple tier use case, includes PERSPECTIVE block format
 4. **Standard Profile Structure** — Lists all 16 sections
-5. **Handback Protocol Reference** — Points to `${CLAUDE_PLUGIN_ROOT}/reference/execution-protocol.md` for the handback formats (the slim CONDUCTOR no longer carries the handback bodies; they render into the execution-protocol reference file in step-04)
+5. **Output Economy** - Expert-facing restatement of `D08-core-protocol.md § Output Economy`, scoped to the handback (see below)
+6. **Handback Protocol Reference** — Points to `${CLAUDE_PLUGIN_ROOT}/reference/execution-protocol.md` for the handback formats (the slim CONDUCTOR no longer carries the handback bodies; they render into the execution-protocol reference file in step-04)
+
+#### Output Economy (in preamble)
+Short section, placed immediately before Handback Protocol Reference so the economy rule and the required-field list read together. Required content: the handback is read by a manager synthesizing several experts, so it is spent on findings; lead with the outcome rather than with what was done or which files were opened; match length to the task without filler sections, restatement of the brief, or a recap; one to two sentences as the working unit per finding.
+
+MUST close with the floor clause: economy is not omission, a compressed handback still carries every protocol-required field including STRONGEST OBJECTION and FALSIFIER, and compression takes from packaging rather than from findings. Without it, the section reads as licence to drop fields the handback protocol requires - the preamble would then contradict the protocol it introduces two sections later.
 
 #### Index Organization
 Seven major sections:
@@ -220,7 +226,9 @@ After generation, verify:
 - [ ] NO `agents/_preamble.md` and NO `agents/index.md` are emitted (those paths are retired)
 
 ### Preamble Structure
-- [ ] Contains 5 major sections
+- [ ] Contains 6 major sections
+- [ ] Output Economy section present, placed immediately before Handback Protocol Reference
+- [ ] Output Economy closes with the floor clause and explicitly names STRONGEST OBJECTION and FALSIFIER as fields compression may not drop
 - [ ] AI Agent Context lists 5 key implications
 - [ ] PERSPECTIVE block format present verbatim
 - [ ] 16-section profile template listed in order
