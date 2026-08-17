@@ -18,15 +18,18 @@ Also examine the actual OpenJunto source files for reference. These are the cano
 - `{OJ_SOURCE}/skills/run-task/SKILL.md`     — execute a single backlog item through the 5-phase lifecycle
 - `{OJ_SOURCE}/skills/save-session/SKILL.md` — persist session state before `/clear`
 - `{OJ_SOURCE}/skills/show-backlog/SKILL.md` — display a concise read-only summary of the backlog
-- `{OJ_SOURCE}/skills/spec/SKILL.md`         — front-half authoring (reqs/design/plan/refresh) + backlog graduation
+- `{OJ_SOURCE}/skills/spec/SKILL.md`         — front-half authoring (reqs/design/plan/refresh/capture) + backlog graduation
 - `{OJ_SOURCE}/skills/backlog-compact/SKILL.md` — size-triggered backlog compaction (pin to a git blob, then rewrite active items into the compact single-sourced schema)
 - `{OJ_SOURCE}/skills/workstream-new/SKILL.md` — scaffold a parallel-workstream execution thread (git worktree + symlinked shared state) via the `oj-helper workstream-new` subcommand
+- `{OJ_SOURCE}/skills/impl/SKILL.md`         — deliver ONE backlog item as a reviewed draft PR (branch + worktree isolation, the task lifecycle, an approval-gated push)
+- `{OJ_SOURCE}/skills/review/SKILL.md`       — ad-hoc adversarial review of a code path or PR, filed to the resolved reviews history area, with optional `--fix` / `--comment`
+- `{OJ_SOURCE}/skills/watch-pr/SKILL.md`     — carry an open PR through CI and review to merge close-out; resumable, re-derives state every invocation
 
 The pre-plugin form of these protocols lived at `~/.claude/commands/*.md` (legacy `run-task.md`, `save-session.md`, `show-backlog.md`). The plugin tree retains the same operational content but reshapes it into the SKILL.md contract documented below. New `cycle`, `health-check`, `backlog-compact`, and `workstream-new` skills have no pre-plugin command equivalent — read the `{OJ_SOURCE}` skill bodies for their canonical content.
 
 ## Task
 
-Generate **8 skill files** in plugin form. The Claude plugin host loads skills from `skills/<name>/SKILL.md` (directory-per-skill, not flat-file). Create each file at the path specified below:
+Generate **11 skill files** in plugin form. The Claude plugin host loads skills from `skills/<name>/SKILL.md` (directory-per-skill, not flat-file). Create each file at the path specified below:
 
 1. `skills/cycle/SKILL.md`        — autonomous backlog cycle skill
 2. `skills/health-check/SKILL.md` — runtime health probe skill
@@ -36,6 +39,9 @@ Generate **8 skill files** in plugin form. The Claude plugin host loads skills f
 6. `skills/spec/SKILL.md`         — front-half authoring + backlog graduation skill
 7. `skills/backlog-compact/SKILL.md` — size-triggered backlog compaction skill
 8. `skills/workstream-new/SKILL.md` — parallel-workstream scaffolding skill
+9. `skills/impl/SKILL.md`         — single-item delivery skill (draft PR)
+10. `skills/review/SKILL.md`      — ad-hoc adversarial change-review skill
+11. `skills/watch-pr/SKILL.md`    — PR watch + merge close-out skill
 
 Each SKILL.md is a markdown instruction set with YAML frontmatter (not an executable script). The plugin host activates a skill when the user invokes its slash-command surface (`/cycle`, `/health-check`, `/run-task`, `/save-session`, `/show-backlog`). Each skill defines a protocol — step-by-step instructions with decision points, constraints, and fallback behaviors that Claude follows when activated.
 
@@ -211,16 +217,22 @@ Cross-references use `/run-task` for the full task lifecycle that consumes the b
 **YAML frontmatter** (verbatim):
 ```yaml
 ---
-description: Author front-half specs (reqs/design/plan) and graduate plan tasks into the backlog
+description: Author front-half specs (reqs/design/plan) for a subject, capture session rulings into them, and graduate plan tasks into the backlog
+argument-hint: <reqs|design|plan|refresh|capture> <project/domain> [ID]
 disable-model-invocation: true
 ---
 ```
 
-`spec` is side-effecting (it writes durable spec docs AND mutates the backlog / issue tracker during graduation), so it carries `disable-model-invocation: true` and gets NO `context: fork` or `allowed-tools` — same invocation-control class as `cycle`, `run-task`, and `save-session` (Item 7).
+`spec` is side-effecting (it writes durable spec docs AND mutates the backlog / issue tracker during graduation), so it carries `disable-model-invocation: true` and gets NO `context: fork` or `allowed-tools` — same invocation-control class as `cycle`, `run-task`, and `save-session` (Item 7). It MUST NOT set `effort` (see § Format Requirements item 9).
 
 **Body**: Reproduce the protocol structure from `{OJ_SOURCE}/skills/spec/SKILL.md`:
 
-- A one-argument mode selector: `reqs | design | plan | refresh`. Ceremony scales to tier (Trivial none, Simple plan-only, Moderate design+plan, Complex all three), consistent with the CONDUCTOR two-dimensional triage. The `reqs` mode uses the interview-first pattern (`AskUserQuestion`) before drafting; `refresh` re-aligns downstream artifacts and re-runs graduation idempotently.
+- **A `Step 0 — Parse the invocation` section, emitted FIRST in the body**, per `D56` § Explicit Argument Contract. It MUST state the grammar `<op> <project/domain> [ID]` plus optional trailing prompt text, parse `$ARGUMENTS` in that order, and validate arity: an unrecognized or missing `<op>`, or a missing `<project/domain>`, prints the usage line and STOPS. `[ID]` is recognized only when the third token matches a tracked-item id shape; otherwise that token begins the prompt. State why the check is hard rather than best-effort: a mis-parsed subject files a correct document at a wrong location and reports success.
+- A five-mode selector: `reqs | design | plan | refresh | capture`. Ceremony scales to tier (Trivial none, Simple plan-only, Moderate design+plan, Complex all three), consistent with the CONDUCTOR two-dimensional triage. The `reqs` mode uses the interview-first pattern (`AskUserQuestion`) before drafting; `refresh` re-aligns downstream artifacts and re-runs graduation idempotently.
+- **`capture` mode** (`D56` § Spec Authoring Command): folds rulings reached in the CURRENT SESSION into the subject's existing documents, with `[ID]` narrowing the pass to one tracked item. The generated body MUST require that rulings be enumerated with the exchange that settled each (never inferred, never a recommendation the user has not answered), that an empty capture be reported as a correct outcome rather than padded, that each ruling be routed by type per the Filing Rule, that the full set be presented as a diff and gated on approval, that stable IDs be preserved, and that Step G re-run ONLY if a plan task changed. It MUST also carry the standing constraint that `capture` can never run under `context: fork`, since a forked context has no conversation history and would capture nothing while reporting success.
+- **`refresh` and `capture` MUST remain distinct modes**, and the generated body MUST say why: `refresh` propagates a change already written into an upstream document, `capture` folds decisions reached in conversation. A generator that collapses them, or that reintroduces a `refine` mode differing from `refresh` only in scope (the optional `[ID]` already expresses scope), has regressed this decision.
+- **Subject-to-node binding and the flat-layout fallback**: `<project/domain>` is passed verbatim as `--node` when resolving a typed location. Under `flat` the category keys exit 3, so the subject names the subject but NOT a directory: the generated body MUST instruct the skill to say so explicitly in its output and file under `oj-helper resolve-path artifacts` with the filename derived from the subject (`/` -> `-`), rather than inventing a node. A required argument that silently stops selecting a location is the divergence the path indirection exists to prevent.
+- **`decisions` as an output**: where a mode settles a question that constrains later work, append to the `decisions` key for the subject, authored against `${CLAUDE_PLUGIN_ROOT}/templates/architecture-decision-record.md`. The generated body MUST state that the decision record ACCUMULATES (appending is the normal case) and that entries are never rewritten or renumbered, since earlier docs and graduated items cite them.
 - The `reqs`/`design`/`plan` modes author against the step-05 front-half templates — `${CLAUDE_PLUGIN_ROOT}/templates/requirements.md`, `${CLAUDE_PLUGIN_ROOT}/templates/design.md`, `${CLAUDE_PLUGIN_ROOT}/templates/implementation-plan.md` respectively. The templates carry the required sections (stable `FR-N`/`NFR-N`/`T-<subject>-NN` IDs, out-of-scope, per-task `verify:` command, open-questions, live-state reconciliation, graduation record); the skill body references them rather than duplicating the section lists.
 - **Location by type (Shared conventions)**: this skill's three artifacts map one-to-one onto the `requirements` / `design` / `plan` category keys, so the generated "Location" convention MUST instruct the skill to resolve `oj-helper resolve-path requirements|design|plan` (with `--node <relpath>` naming the node that owns the subject) and write to the resolved file, falling back on exit 3 to the project's `program/` artifacts area (e.g. `docs/program/<subject>-<artifact>.md`) or to `oj-helper resolve-path artifacts` inside the OpenJunto state tree. It MUST also state that **a review is not a design**: this skill authors new intent, so its output belongs at the node and never in a dated history folder. Point at `${CLAUDE_PLUGIN_ROOT}/reference/file-patterns.md` § Filing Rule rather than restating the procedure.
 - **Plan-mode graduation (Step G)** — the fully-specified substance; reproduce it verbatim from the baseline and keep it faithful to `D56` § Backlog Graduation. The generated Step G MUST emit:
@@ -289,6 +301,80 @@ Constraints: do NOT execute the `cd` or launch `claude` on the user's behalf; do
 
 Cross-references use `${CLAUDE_PLUGIN_ROOT}/templates/backlog.md` (the `WS-<X>` workstream schema) and the `oj-helper workstream-new` subcommand (step-07).
 
+### 9. impl skill — `skills/impl/SKILL.md`
+
+**Purpose**: Take ONE unblocked backlog item from selected to a published **draft PR**, with the adversarial review already done. Canonical spec: `D56-commands-automation.md` § Implementation Delivery Command.
+
+**YAML frontmatter** (verbatim):
+```yaml
+---
+description: Deliver one backlog item as a reviewed draft PR - select the item, isolate a branch and worktree, run the task lifecycle, then push and open a draft PR
+argument-hint: <project/domain> [backlog-id|issue-key] [--branch NAME]
+disable-model-invocation: true
+---
+```
+
+`impl` is side-effecting in the strongest sense in this plugin (it writes code, pushes, and opens a PR), so `disable-model-invocation: true` is REQUIRED and it gets NO `context: fork` or `allowed-tools`.
+
+**Body** — reproduce from `{OJ_SOURCE}/skills/impl/SKILL.md`, preserving these load-bearing properties:
+
+- **It is a COMPOSITION, and the body must say so.** Emit an explicit statement that selection, triage, execution and testing are `${CLAUDE_PLUGIN_ROOT}/skills/run-task/SKILL.md`'s 5-phase lifecycle, run unchanged, and that this skill adds only working-copy isolation before it and PR delivery after it. **Do NOT restate the lifecycle phases here.** A generator that inlines a second copy of triage/execute/test has created the drift `D56` § Implementation Delivery Command forbids.
+- **Orchestration-command declaration**: state that the delegation boundary binds for the whole invocation, citing `${CLAUDE_PLUGIN_ROOT}/CONDUCTOR.md` § Delegation Boundary. This is why step-01 MUST list `impl` in the authoritative orchestration-command enumeration — a code-writing command absent from that list makes Self-Check step 0 answer "no" and the boundary fails OPEN.
+- **Step 0 argument parse** with the grammar above, arity validation, and a usage-line stop.
+- **Selection without an id**: filter to unblocked *implementation* items for the subject, summarize the top candidates with their verification commands, recommend one, and put the choice to the user via `AskUserQuestion`. Never select silently; never invent work when nothing is unblocked; route non-implementation items to `/oj:spec` instead of absorbing them. Backlog source detection is identical to `/run-task` and `/show-backlog`.
+- **Isolation**: require a clean tree (a dirty tree STOPS the run — it is how unrelated work gets merged unnoticed), fetch the default branch, state the base commit, and create branch + worktree (reusing `oj-helper workstream-new` where the project uses workstreams). Branch naming obeys External Artifact Hygiene: no local backlog id, issue-tracker keys permitted.
+- **The one-way-door gate** (`D56` § Implementation Delivery Command, first INVARIANT): before ANY push, present branch, base, commits, the verification command's ACTUAL output, and the review verdict, and gate on `AskUserQuestion`. Nothing reaches the remote before approval; approval covers this invocation only.
+- **Terminates at the draft PR** (second INVARIANT): never merges, never enables auto-merge, never marks the item done, never blocks awaiting a human. It records the PR as the item's single source of external state stamped `verified <today>`, sets the item in progress, and hands off to `/oj:watch-pr`.
+
+### 10. review skill — `skills/review/SKILL.md`
+
+**Purpose**: Adversarially review existing work — a path or a PR — and file the findings; optionally apply the confirmed ones and post them to the PR. Canonical spec: `D56-commands-automation.md` § Change Review Command (the § Activation Modes ad-hoc mode).
+
+**YAML frontmatter** (verbatim):
+```yaml
+---
+description: Adversarially review a code path or an open PR, file the findings to the reviews history area, and optionally fix the confirmed ones or post them as PR comments
+argument-hint: [--fix] [--comment] <code-path|PR-url>
+disable-model-invocation: true
+---
+```
+
+`disable-model-invocation: true` is REQUIRED (`--fix` writes code and `--comment` posts externally). NO `context: fork` — the manager must remain able to spawn the reviewer and hold the synthesis. **It MUST NOT set `effort`** (§ Format Requirements item 9), even though its work is the reviewer slot: reviewer depth is bound per agent on the role.
+
+**Body** — reproduce from `{OJ_SOURCE}/skills/review/SKILL.md`, preserving:
+
+- **Step 0 argument parse**: flags in any position/order, first non-flag token is the target, remainder is an optional focus. **`--comment` REQUIRES a PR target** and the skill REFUSES rather than degrading to a local-only review — the user asked for something their reviewers would see. A merged/closed PR target is surfaced and confirmed before proceeding.
+- **Stated scope**: report the exact files/diff/base ref reviewed, and for a path target state whether the committed state or the uncommitted diff was reviewed. An unstated scope makes the review untrustworthy later.
+- **The reviewer is a DISTINCT agent, and the manager never reviews inline** (`D56` § Change Review Command INVARIANT). The body MUST carry this as an absolute, with the reason: an agent critiquing material already in its own context rationalizes it, so an inline review removes the mechanism the command depends on while still emitting review-shaped output. Reviewer role selected by what the diff touches via `${CLAUDE_PLUGIN_ROOT}/reference/expert-index.md`; protocol from `${CLAUDE_PLUGIN_ROOT}/reference/workflow-stages.md`; scope discipline unchanged (correctness/requirements only, "no material concerns" valid, FAILURE MODES TESTED retained). Spawns follow § Spawn Economics — named roles carry their own config, briefs name files not topics.
+- **Typed findings with a confidence verdict**, reported through the host's findings-reporting tool, ranked most severe first. `CONFIRMED` = the reviewer demonstrated the defect with a concrete input/state; `PLAUSIBLE` = reasoned only. An empty findings list is a real result.
+- **Filing via the resolved key**: `oj-helper resolve-path reviews`, falling back to `retros` then `artifacts`. The generated body MUST NOT contain a literal reviews path (step-07 § 15 states why). Split a document that both reviews and proposes: findings to history, intent to the node.
+- **`--fix`**: `CONFIRMED` findings ONLY, skipped ones listed with reasons; a **distinct agent from the reviewer** applies them; a deterministic landing rule (own the PR's head branch -> commit onto it; otherwise new branch + separate PR); re-verify and report actual output; push gated on approval, never to `main`, never force.
+- **`--comment`**: approval-gated; findings **self-contained** with no `.claude/` path, local backlog id, or local finding number; **idempotent** against a stable marker naming the reviewed head SHA so a re-run updates or skips rather than double-posting.
+- **Read-only by default**: with neither flag, the skill changes no code and posts nothing.
+
+### 11. watch-pr skill — `skills/watch-pr/SKILL.md`
+
+**Purpose**: Carry an already-open PR from opened to integrated and closed out. Canonical spec: `D56-commands-automation.md` § Change Watch Command.
+
+**YAML frontmatter** (verbatim):
+```yaml
+---
+description: Watch an open PR through CI and code review until a human merges it - fix failing checks, address review comments, then close out the backlog item
+argument-hint: <PR-url|number> [--item ID]
+disable-model-invocation: true
+---
+```
+
+`disable-model-invocation: true` is REQUIRED (it pushes fixes and posts review replies). NO `context: fork` or `allowed-tools`.
+
+**Body** — reproduce from `{OJ_SOURCE}/skills/watch-pr/SKILL.md`, preserving:
+
+- **Resumability as the stated design**: every invocation re-derives PR state from the PR itself and does only what that state requires, holding NO memory between invocations. The body MUST explain that this is why the wait was split out of `impl` — an open-ended wait folded into the producing command makes it un-resumable and burns its context idling — and MUST include the state-to-action dispatch table (merged -> close out; closed unmerged -> stop; checks failing -> fix; changes requested -> address; green/approved or still running -> hand back).
+- **Failing checks are diagnosed from ACTUAL logs**, never inferred from a check's name; the genuine-failure vs infrastructure-flake call is stated with its evidence, because treating a real failure as flake and retrying is how a broken change reaches the integration branch.
+- **Review comments are triaged, not obeyed**: correctness/requirements points get changes, preference points get answers, misreadings get the clarifying fact; no thread is closed by silence. Replies are external text and MUST be self-contained (no `.claude/` path, no local backlog id).
+- **Never integrates** (`D56` § Change Watch Command INVARIANT): no merge, no auto-merge enablement, no force-update of a published ref; close-out runs only once the PR independently reports itself merged. Pushing fixes to the head branch of a PR the user already published is a continuation of published work and does NOT need a fresh approval gate — state this explicitly so a generator does not add a gate that would defeat the command's purpose.
+- **Close-out**: transition the item (issue-tracker failures non-blocking), stamp `verified <today>`, and run the single-source cross-reference refresh — grep the backlog and session state for EVERY other mention of the PR and refresh each in the same edit.
+
 ## Format Requirements
 
 Each SKILL.md must:
@@ -301,13 +387,16 @@ Each SKILL.md must:
 6. **Brand Identity**: Use **"OpenJunto"** as the product/system name in all user-facing prose. Do NOT emit bare "Junto" as a product name (preserved only in historical references to Franklin's Junto). Technical identifiers use the lowercase `oj-` prefix (`oj-helper`, `oj-expert`, `OJ_DEVMODE`, `${CLAUDE_PLUGIN_ROOT}`) and MUST be preserved verbatim — these are part of the tool contract. Legacy `junto-*` identifier forms are accepted by the helper for one release as backward-compat fallbacks.
 7. **Plugin-tree references** use `${CLAUDE_PLUGIN_ROOT}/<subdir>/<file>` for files inside the plugin install (NOT `~/.claude/...` — that path form is reserved for user-installed CLAUDE.md and per-user configuration). Reference `${CLAUDE_PLUGIN_ROOT}/reference/compact/<name>.md` for compact profiles (NOT `agents/*-compact.md`, NOT `agents/compact/*.md`), `${CLAUDE_PLUGIN_ROOT}/reference/expert-index.md` for the roster index, and `${CLAUDE_PLUGIN_ROOT}/agents/<name>.md` for full profiles.
 8. **Body length** must exceed 5 lines (`verify_step_06` asserts this; an empty or near-empty skill is treated as a generation failure).
+9. **Argument contract** (`D56` § Explicit Argument Contract). Every skill that takes arguments — `spec`, `impl`, `review`, `watch-pr`, `workstream-new` — MUST declare `argument-hint:` in its frontmatter, and every skill whose arguments carry meaning beyond a single token MUST consume `$ARGUMENTS` explicitly in a `Step 0` parse section with a stated grammar and an arity check that stops with the usage line. Relying on the host's fallback (which appends `ARGUMENTS: <value>` to the body when the placeholder is absent) is a generation DEFECT: it leaves the skill with no positional binding and no way to reject a bad arity. Do NOT use the named-positional `arguments:` frontmatter field for this surface — it cannot express flags or a trailing free-form prompt, both of which these commands take, so the grammar is parsed in one place in the body instead.
+10. **No skill sets `effort:` in frontmatter.** A skill-level effort override changes effort mid-session, which invalidates the prompt cache and re-writes the whole prefix at cache-write price. Reasoning depth is bound per agent on the role (`effort_binding: per-agent`), so a skill that wants a deeper reviewer selects a role, it does not override the session. This applies even to `review`, whose entire job is the reviewer slot.
 
 ## Verification
 
 After generation, verify each SKILL.md:
 
-1. **Path**: file exists at `skills/<name>/SKILL.md` (directory-per-skill, not flat). All 8 directories present: `skills/cycle/`, `skills/health-check/`, `skills/run-task/`, `skills/save-session/`, `skills/show-backlog/`, `skills/spec/`, `skills/backlog-compact/`, `skills/workstream-new/`.
-2. **Frontmatter**: file begins with `---` on line 1, contains a `description:` line, closes with `---` before the body. **Invocation controls (Item 7)**: the side-effecting skills (`cycle`, `run-task`, `save-session`, `spec`, `backlog-compact`, `workstream-new`) each carry `disable-model-invocation: true`; the read-only skills (`show-backlog`, `health-check`) each carry `allowed-tools: [Bash, Read, Grep, Glob]` (a read-only set — no write/edit tools) and `context: fork`. The side-effecting skills do NOT get `context: fork` or `allowed-tools`; the read-only skills do NOT get `disable-model-invocation`.
+1. **Path**: file exists at `skills/<name>/SKILL.md` (directory-per-skill, not flat). All 11 directories present: `skills/cycle/`, `skills/health-check/`, `skills/run-task/`, `skills/save-session/`, `skills/show-backlog/`, `skills/spec/`, `skills/backlog-compact/`, `skills/workstream-new/`, `skills/impl/`, `skills/review/`, `skills/watch-pr/`. The enforced file-set list in `claude/validation/snapshots/plugin-tree.snapshot.yaml` must agree.
+2. **Frontmatter**: file begins with `---` on line 1, contains a `description:` line, closes with `---` before the body. **Invocation controls (Item 7)**: the side-effecting skills (`cycle`, `run-task`, `save-session`, `spec`, `backlog-compact`, `workstream-new`, `impl`, `review`, `watch-pr`) each carry `disable-model-invocation: true`; the read-only skills (`show-backlog`, `health-check`) each carry `allowed-tools: [Bash, Read, Grep, Glob]` (a read-only set — no write/edit tools) and `context: fork`. The side-effecting skills do NOT get `context: fork` or `allowed-tools`; the read-only skills do NOT get `disable-model-invocation`. **No skill carries `effort:`** (Format Requirements item 10).
+2b. **Argument contract** (Format Requirements item 9): `spec`, `impl`, `review`, `watch-pr` and `workstream-new` each declare `argument-hint:`; `spec`, `impl`, `review` and `watch-pr` each reference `$ARGUMENTS` and contain a `Step 0` parse section that stops on bad arity. No skill uses the `arguments:` named-positional field.
 3. **Body**: more than 5 lines of markdown content after the frontmatter.
 4. **Phase/step completeness**: each skill reproduces the steps documented in the corresponding `{OJ_SOURCE}/skills/<name>/SKILL.md` baseline.
 5. **Decision logic**: backlog source detection logic appears identical in both /run-task and /show-backlog (both call `oj-helper issue-tracker-check` and parse exit code + JSON `.project` field).
@@ -315,11 +404,17 @@ After generation, verify each SKILL.md:
 7. **Cross-references**: every `${CLAUDE_PLUGIN_ROOT}/<subdir>/<file>` reference points to a file the plugin tree will actually contain (the structural-diff Layer 4 check resolves these against the live tree).
 8. **No legacy paths**: no `~/.claude/commands/`, no legacy `src/`-rooted output forms (commands previously lived under that wrapper; they now live in plugin-tree-direct `skills/` directories), no nested `agents/compact/` subdirectory, and no `agents/*-compact.md` siblings (compact profiles live at `reference/compact/<name>.md`); no `agents/index.md` reference (use `reference/expert-index.md`).
 9. **Graduation contract (spec skill)**: `skills/spec/SKILL.md` reproduces Step G with the four hard guarantees from `D56` § Backlog Graduation — (a) prepare/validate with NO writes before the confirmation gate; (b) whole-set confirmation gate before any write; (c) all-or-none commit (single-replace write for file-backed; tracked-key rollback for issue-tracker); (d) issue-tracker external-id hygiene (no `T-` / local backlog id in tracker-visible fields; correspondence in `<plan-doc>.map`). Backlog source-detection and item schema match `/run-task` and `/show-backlog` verbatim.
+10. **Delivery / review contracts (new in this step)**, each traceable to a `D56` INVARIANT:
+    - `skills/impl/SKILL.md` references `${CLAUDE_PLUGIN_ROOT}/skills/run-task/SKILL.md` and does NOT restate the lifecycle phases (composition, not duplication); contains an approval gate before any push whose text forbids reaching the remote first; and states that it never merges, never marks the item done, and never blocks on a human.
+    - `skills/review/SKILL.md` contains the absolute prohibition on the manager reviewing inline, requires a distinct fixer under `--fix`, restricts `--fix` to `CONFIRMED` findings, calls `oj-helper resolve-path reviews`, and contains NO literal reviews path (`grep -E '\.claude/(history|archive)/reviews'` must not match). `--comment` is approval-gated, idempotent against a head-SHA marker, and requires a PR target.
+    - `skills/watch-pr/SKILL.md` states that it never merges and never enables auto-merge, re-derives state every invocation, and does not gate pushes of fixes to an already-published PR branch.
+    - `skills/spec/SKILL.md` declares the `capture` mode, contains NO `refine` mode, still re-runs Step G under `refresh`, and bars `capture` from `context: fork`.
+11. **Orchestration-command enumeration (cross-step)**: the authoritative list in the generated CONDUCTOR (step-01) names `impl`, `review` and `watch-pr` alongside the cycle-runner and task-lifecycle commands, and the list appears EXACTLY ONCE (the Self-Check and Triage Requirement references point at it rather than restating it). A code-writing command missing from that list makes the delegation boundary fail open, which is silent.
 
 ## Dependencies
 
-- **Step 01** (CONDUCTOR.md) must be complete — defines the slim two-dimensional triage (incl. the Trivial fast-path) and tier overview referenced by each skill body
+- **Step 01** (CONDUCTOR.md) must be complete — defines the slim two-dimensional triage (incl. the Trivial fast-path) and tier overview referenced by each skill body, AND the authoritative orchestration-command enumeration that `impl`, `review` and `watch-pr` must appear in (Verification item 11). Generating those three skills without the step-01 list entry ships a delegation boundary that fails open.
 - **Step 04** (reference files) must be complete — skills cross-reference `${CLAUDE_PLUGIN_ROOT}/reference/stakeholder-guide.md`, `workflow-stages.md`, and the full execution mechanics / model-selection table in `${CLAUDE_PLUGIN_ROOT}/reference/execution-protocol.md`
 - **Step 05** (templates) must be complete — skills cross-reference `${CLAUDE_PLUGIN_ROOT}/templates/session-state.md`, `retrospective.md`; the `spec` skill additionally references the front-half templates `${CLAUDE_PLUGIN_ROOT}/templates/{requirements,design,implementation-plan}.md`; the `backlog-compact` skill (and graduation's item-build) reference `${CLAUDE_PLUGIN_ROOT}/templates/backlog.md`
-- **Step 07** (oj-helper script) must be complete — skills invoke `oj-helper` subcommands (`issue-tracker-check`, `issue-tracker-list`, `issue-tracker-transition`, `feedback-path`, `conductor-inject`); the `spec` skill additionally invokes `resolve-path backlog`, `issue-tracker-create`, and `issue-tracker-link-list` during graduation; the `workstream-new` skill invokes the `workstream-new` subcommand (step-07 § 13), and `backlog-compact` invokes `resolve-path backlog`
+- **Step 07** (oj-helper script) must be complete — skills invoke `oj-helper` subcommands (`issue-tracker-check`, `issue-tracker-list`, `issue-tracker-transition`, `feedback-path`, `conductor-inject`); the `spec` skill additionally invokes `resolve-path backlog`, `issue-tracker-create`, and `issue-tracker-link-list` during graduation; the `workstream-new` skill invokes the `workstream-new` subcommand (step-07 § 13), `backlog-compact` invokes `resolve-path backlog`, and the `review` skill invokes `resolve-path reviews` (step-07 § 15 state keys) with `retros` / `artifacts` fallbacks
 - **D56** § Spec Authoring Command (front-half) + § Backlog Graduation — canonical source for the `spec` skill's modes and the Step G graduation protocol (identity/back-reference, field mapping, priority derivation, dependency translation, idempotent upsert, atomicity, external-id hygiene, confirmation/decomposition)
